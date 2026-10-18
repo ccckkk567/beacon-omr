@@ -86,6 +86,10 @@ class SciWorldWorker:
         info['executed_action'] = action
         info['score'] = current_score
         info['task_score'] = current_score
+        if getattr(self, '_omr_protocol', False):
+            info['raw_completed'] = bool(self.env.server.getCompleted())
+            info['strict_success'] = bool(info['raw_completed'] and current_score >= 100)
+            info.update(self._omr_task_receipt)
 
         # 检测子目标完成
         if not hasattr(self, 'prev_score'):
@@ -119,7 +123,9 @@ class SciWorldWorker:
     def reset(self, variation_idx):
         """Reset the environment with given variation index"""
         # Select task variation
-        if variation_idx is None or variation_idx >= len(self.variations_idx):
+        if isinstance(variation_idx, (tuple, list)):
+            task_id, task_variation = variation_idx
+        elif variation_idx is None or variation_idx >= len(self.variations_idx):
             # Random selection from available variations
             task_id, task_variation = self.rng.choice(self.variations_idx)
         else:
@@ -164,6 +170,14 @@ class SciWorldWorker:
             'simplifications': simplification_str,
         }
 
+        return obs, info
+
+    def reset_explicit(self, task):
+        from experiments.omr.root_protocol import seed_root
+        seed_root(task['root_seed'])
+        self._omr_protocol = True
+        obs, info = self.reset(task['target'])
+        self._omr_task_receipt = {key: info[key] for key in ('task_num', 'task_variation', 'task_name')}
         return obs, info
 
     def close(self):
@@ -247,14 +261,10 @@ class SciWorldMultiProcessEnv(gym.Env):
                 f'Expected {self.num_processes} actions, got {len(actions)}',
             )
 
-        # Send step commands to all workers
-        futures = []
-        for worker, action in zip(self._workers, actions):
-            future = worker.step.remote(action)
-            futures.append(future)
+        from experiments.omr.root_protocol import step_workers
 
         # Collect results
-        results = ray.get(futures)
+        results = step_workers(self, self._workers, actions)
         obs_list, reward_list, done_list, info_list = [], [], [], []
         for obs, reward, done, info in results:
             obs_list.append(obs)
@@ -266,13 +276,14 @@ class SciWorldMultiProcessEnv(gym.Env):
 
     def reset(self):
         # Sample variation indices (like WebShop samples goal indices)
-        idx = self._rng.choice(self.variation_idxs, size=self.env_num, replace=False)
-        idx = np.repeat(idx, self.group_n).tolist()
+        tasks = getattr(self, 'omr_tasks', None)
+        idx = (np.repeat(self._rng.choice(self.variation_idxs, size=self.env_num, replace=False),
+                         self.group_n).tolist() if tasks is None else [None] * self.num_processes)
 
         # Send reset commands to all workers
         futures = []
-        for worker, i in zip(self._workers, idx):
-            future = worker.reset.remote(i)
+        for slot, (worker, i) in enumerate(zip(self._workers, idx)):
+            future = worker.reset.remote(i) if tasks is None else worker.reset_explicit.remote(tasks[slot])
             futures.append(future)
 
         # Collect results

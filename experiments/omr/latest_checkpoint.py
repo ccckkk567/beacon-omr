@@ -69,6 +69,17 @@ class LatestCheckpoint:
     @contextmanager
     def lock(self):
         path = self.root / ".save.lock"
+        if os.name != 'nt':
+            # Kernel releases this lock even on SIGKILL; a stale marker must not
+            # prevent recovery after Slurm reaches the wall-time limit.
+            import fcntl
+            with path.open('a+') as stream:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+            return
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         try:
             os.write(fd, str(os.getpid()).encode())

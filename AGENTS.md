@@ -22,6 +22,9 @@ Current user overrides to the execution specification:
   excluded those installations from further checks.
 - Keep local site paths and all credentials outside Git. Do not print credentials
   or a complete environment-variable dump.
+- Stop separate readiness/probe rounds. Reuse accepted evidence and advance real
+  training; essential protocol checks execute inside the training job. Begin the
+  three baselines while completing OMR integration. Never label baseline as full.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
@@ -29,7 +32,7 @@ upstream per-environment code profiles and baseline/full common fixes. A milesto
 does not stop the current rollout. Only later rollouts may restart, each with H
 new actions; replay is separately costed. No teacher, SFT, extra reward or ablations.
 
-Readiness must include real environment restore, two-GPU updates, monitoring,
-and complete resume. Unit fixtures are not evidence of HPC readiness or training.
+Real environment restore, two-GPU updates, monitoring and resume need evidence
+from actual execution. Unit fixtures are not evidence of completed HPC training.
 Checkpoint replacement must commit the new complete generation before removing
 the previous one. Preserve full scientific records and active restore payloads.

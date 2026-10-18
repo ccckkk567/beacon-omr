@@ -59,6 +59,17 @@ class AlfworldWorker:
     """
     
     def __init__(self, config, seed, base_env):
+        if isinstance(base_env, dict):
+            # The simulator can reuse its own Python packages while the GPU
+            # learner uses the pinned Torch/vLLM training stack.
+            specification = base_env
+            cls = get_environment(config['env']['type'])
+            base_env = cls.__new__(cls)
+            base_env.config = config
+            base_env.train_eval = specification['train_eval']
+            base_env.game_files = specification['game_files']
+            base_env.num_games = len(base_env.game_files)
+            base_env.use_expert = False
         self.env = base_env.init_env(batch_size=1)  # Each worker holds only one sub-environment
         self.env.seed(seed)
     
@@ -75,6 +86,17 @@ class AlfworldWorker:
         obs, infos = self.env.reset()
         infos['observation_text'] = obs
         return obs, infos
+
+    def reset_explicit(self, task):
+        from experiments.omr.root_protocol import seed_root
+        seed_root(task['root_seed'])
+        native = self.env.unwrapped
+        previous = native._gamefiles_iterator
+        native._gamefiles_iterator = iter([task['target']])
+        try:
+            return self.reset()
+        finally:
+            native._gamefiles_iterator = previous
     
     def getobs(self):
         """Get current observation image"""
@@ -93,13 +115,23 @@ class AlfworldEnvs(gym.Env):
         eval_dataset = env_kwargs.get('eval_dataset', 'eval_in_distribution')
         config = load_config_file(alf_config_path)
         env_type = config['env']['type']
-        base_env = get_environment(env_type)(config, train_eval='train' if is_train else eval_dataset)
+        split = 'train' if is_train else eval_dataset
+        worker_python = env_kwargs.get('worker_python')
+        actor_options = dict(resources_per_worker)
+        if worker_python:
+            actor_options['runtime_env'] = {'py_executable': worker_python}
+            catalog = ray.remote(num_cpus=1, runtime_env={'py_executable': worker_python})(alfworld_catalog)
+            self.game_files = ray.get(catalog.remote(config, split))
+            base_env = {'train_eval': split, 'game_files': self.game_files}
+        else:
+            base_env = get_environment(env_type)(config, train_eval=split)
+            self.game_files = list(base_env.game_files)
         self.multi_modal = (env_type == 'AlfredThorEnv')
         self.num_processes = env_num * group_n
         self.group_n = group_n
 
         # Create Ray remote actors instead of processes
-        env_worker = ray.remote(**resources_per_worker)(AlfworldWorker)
+        env_worker = ray.remote(**actor_options)(AlfworldWorker)
         self.workers = []
         for i in range(self.num_processes):
             worker = env_worker.remote(config, seed + (i // self.group_n), base_env)
@@ -111,11 +143,7 @@ class AlfworldEnvs(gym.Env):
         assert len(actions) == self.num_processes, \
             "The num of actions must be equal to the num of processes"
 
-        # Send step commands to all workers
-        futures = []
-        for i, worker in enumerate(self.workers):
-            future = worker.step.remote(actions[i])
-            futures.append(future)
+        from experiments.omr.root_protocol import step_workers
 
         # Collect results
         text_obs_list = []
@@ -124,13 +152,14 @@ class AlfworldEnvs(gym.Env):
         dones_list = []
         info_list = []
 
-        results = ray.get(futures)
+        results = step_workers(self, self.workers, actions)
         for i, (obs, scores, dones, info) in enumerate(results):
             for k in info.keys():
                 info[k] = info[k][0]
 
             text_obs_list.append(obs[0])
             dones_list.append(dones[0])
+            info['task_score'] = float(scores[0])
             info_list.append(info)
 
             self.prev_admissible_commands[i] = info['admissible_commands']
@@ -153,8 +182,9 @@ class AlfworldEnvs(gym.Env):
 
         # Send reset commands to all workers
         futures = []
-        for worker in self.workers:
-            future = worker.reset.remote()
+        tasks = getattr(self, 'omr_tasks', None)
+        for index, worker in enumerate(self.workers):
+            future = worker.reset.remote() if tasks is None else worker.reset_explicit.remote(tasks[index])
             futures.append(future)
 
         # Collect results
@@ -204,3 +234,7 @@ class AlfworldEnvs(gym.Env):
 
 def build_alfworld_envs(alf_config_path, seed, env_num, group_n, resources_per_worker, is_train=True, env_kwargs={}):
     return AlfworldEnvs(alf_config_path, seed, env_num, group_n, resources_per_worker, is_train, env_kwargs)
+
+
+def alfworld_catalog(config, split):
+    return get_environment(config['env']['type'])(config, train_eval=split).game_files

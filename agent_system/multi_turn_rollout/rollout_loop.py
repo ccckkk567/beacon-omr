@@ -299,14 +299,18 @@ class TrajectoryCollector:
 
         # Initial observations from the environment
         obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.pop('env_kwargs', None))
+        observer = getattr(envs, 'omr_observer', None)
+        if observer is not None:
+            observer.reset(obs, infos)
 
         lenght_obs = len(obs['text']) if obs['text'] is not None else len(obs['image'])
         assert len(gen_batch.batch) == lenght_obs, f"gen_batch size {len(gen_batch.batch)} does not match obs size {lenght_obs}"
         
-        if self.config.env.rollout.n > 0: # env grouping
+        group_n = gen_batch.meta_info.get('env_group_n', self.config.env.rollout.n)
+        if group_n > 0: # env grouping
             uid_batch = []
             for i in range(batch_size):
-                if i % self.config.env.rollout.n == 0:
+                if i % group_n == 0:
                     uid = str(uuid.uuid4())
                 uid_batch.append(uid)
             uid_batch = np.array(uid_batch, dtype=object)
@@ -342,6 +346,9 @@ class TrajectoryCollector:
             )
 
             batch_input.meta_info = gen_batch.meta_info
+            if observer is not None:
+                batch_input.non_tensor_batch['omr_generation_seed'] = np.array(
+                    observer.generation_seeds(_step), dtype=np.int64)
 
             # pad to be divisible by dp_size
             batch_input_padded, pad_size = pad_dataproto_to_divisor(batch_input, actor_rollout_wg.world_size)
@@ -402,6 +409,8 @@ class TrajectoryCollector:
             assert len(rewards) == batch_size, f"env should return rewards for all environments, got {len(rewards)} rewards for {batch_size} environments"
             batch.non_tensor_batch['rewards'] = torch_to_numpy(rewards, is_object=True)
             batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
+            if observer is not None:
+                observer.record(batch, obs, next_obs, infos, rewards, dones, active_masks, _step)
             
             # Update episode lengths for active environments
             batch_list: list[dict] = to_list_of_dict(batch)
@@ -426,6 +435,8 @@ class TrajectoryCollector:
                     episode_rewards=episode_rewards, 
                     episode_lengths=episode_lengths,
                     )
+        if observer is not None:
+            observer.finish()
         
         return total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings
     
@@ -518,6 +529,7 @@ class TrajectoryCollector:
         """
         if is_train:
             gen_batch = gen_batch.repeat(repeat_times=self.config.env.rollout.n, interleave=True)
+        gen_batch.meta_info['env_group_n'] = self.config.env.rollout.n if is_train else 1
             
         # Initial observations from the environment
         if self.config.algorithm.filter_groups.enable and is_train:

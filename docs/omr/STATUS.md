@@ -1,6 +1,16 @@
 # Execution status — 2026-10-18
 
-The OMR implementation is in progress. **Do not launch the six formal runs yet.**
+The user requested direct progress into training, without more standalone
+preflight/continuation jobs. **The three baseline training entry points are now
+implemented.** Full OMR remains under integration and is explicitly rejected by
+the baseline launcher. No HPC optimizer update has been returned yet.
+
+See `TRAINING.md` for actual submission/resume commands. Each array element uses
+two H200 and trains one benchmark for 150 updates; elements run one at a time and
+fail independently. Fixed instance manifests, held-out validation, final three-seed
+test, explicit same-root groups, strict ScienceWorld success, online SwanLab,
+durable records and atomic full baseline checkpoint/resume are connected to the
+existing BEACON optimizer loop. The previous continuation job is superseded.
 
 ## Completed locally
 
@@ -53,7 +63,7 @@ offline logging passed. The stage list confirms that the v3 environment and inde
 were reused. Online SwanLab remains unverified. This is preparation acceptance,
 not an optimizer update or a complete training-readiness result.
 
-The next bounded GPU job checks WebShop mid-episode replay and online SwanLab
+The superseded standalone continuation job would check WebShop mid-episode replay and online SwanLab
 upload/readback without installing packages, downloading assets, building an index
 or reloading the policy model. The replay adapter uses explicit content-bound tasks,
 executes the real command prefix and verifies every transition plus final session,
@@ -120,16 +130,14 @@ Submission scripts pass Bash syntax checking. These are not HPC acceptance resul
 
 ## Remaining implementation / acceptance
 
-1. Verify real WebShop continuation and SwanLab online readback using the prepared
-   runtime. Preserve the accepted ALFWorld/ScienceWorld/WebShop and model evidence.
-2. Implement native per-environment restart adapters and explicit task manifests;
-   integrate same-start groups, history/detector state and H new actions.
-3. Connect controller commits, complete records, cost ledger, atomic checkpoint and
-   full resume to the native trainer. No replacement PPO implementation.
-4. Verify real environment interactions, strict success, milestone-to-advantage,
-   two-H200 optimizer/rollout synchronization, checkpoint interruption/resume, and
-   SwanLab online metrics or verified offline sync.
-5. Freeze configs/commit, then submit ready environments' baseline/full pairs.
+1. User submits the three baseline training jobs through Tunnel; handle any actual
+   training error per benchmark without blocking the other two.
+2. Complete native ALFWorld/ScienceWorld restart adapters and connect all three
+   adapters to group planning, admission and controller commit after optimizer updates.
+3. Extend the integrated baseline checkpoint to full archive/statistics/payload
+   dependencies and full-only scientific records. Do not relabel baseline as full.
+4. Obtain actual two-H200 optimizer, weight synchronization, resume and SwanLab
+   evidence from training. Local fixtures do not establish GPU execution success.
 
 | Environment | Baseline | Full | Job ID | Training updates | SwanLab URL | Latest model |
 | --- | --- | --- | --- | ---: | --- | --- |
@@ -138,8 +146,8 @@ Submission scripts pass Bash syntax checking. These are not HPC acceptance resul
 | WebShop | Not run | Not run | None | 0 | None | None |
 
 There are no measured learning curves, success rates, GPU-hours, or model outputs
-yet. Formal new-run/resume/evaluation commands will be delivered with the verified
-integration; upstream example launchers are not the OMR execution protocol.
+yet. New-run/resume commands are in `TRAINING.md`; upstream example launchers are
+not the OMR execution protocol. Full remains unlaunched.
 
 ## Local checks
 
@@ -154,3 +162,11 @@ not required. The inventory is standard-library-only and runs on the GPU node.
 After the continuation changes, the complete local suite ran 62 tests: 61 passed
 and the Windows symlink fixture was skipped. Both new submission scripts pass
 Bash syntax checks. No returned GPU continuation or online readback result yet.
+
+After baseline integration, the local suite ran **74 tests: 73 passed, one Windows
+symlink fixture skipped**. New coverage includes real OmegaConf composition for
+all profiles, disjoint stratified manifests, deterministic resumed task schedules,
+native terminal freezing, strict/reference ScienceWorld separation, evaluation
+tail denominators, and the production checkpoint subclass with simulated rank
+failure plus Python/NumPy/Torch/dataloader state recovery. Training submission
+scripts pass Bash parsing. These fixtures do not simulate a native GPU update.

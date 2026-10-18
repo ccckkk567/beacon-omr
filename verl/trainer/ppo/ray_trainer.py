@@ -1057,6 +1057,9 @@ class RayPPOTrainer:
 
         from verl.utils.tracking import Tracking
 
+        self.global_steps = 0
+        # Resume may select a new monitoring lineage after a checkpoint rollback.
+        self._load_checkpoint()
         logger = Tracking(
             project_name=self.config.trainer.project_name,
             experiment_name=self.config.trainer.experiment_name,
@@ -1065,10 +1068,10 @@ class RayPPOTrainer:
         )
         self.logger = logger
 
-        self.global_steps = 0
-
-        # load checkpoint before doing anything
-        self._load_checkpoint()
+        if self.global_steps >= self.total_training_steps:
+            if not getattr(self, 'final_test_done', True):
+                logger.log(data=self._validate(), step=self.global_steps)
+            return
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
@@ -1087,8 +1090,11 @@ class RayPPOTrainer:
         self.global_steps += 1
         last_val_metrics = None
 
-        for epoch in range(self.config.trainer.total_epochs):
+        for epoch in range(getattr(self, 'current_epoch', 0), self.config.trainer.total_epochs):
+            self.current_epoch = epoch
             for batch_dict in self.train_dataloader:
+                if hasattr(self, '_before_training_update'):
+                    self._before_training_update()
                 metrics = {}
                 timing_raw = {}
                 batch: DataProto = DataProto.from_single_dict(batch_dict)
@@ -1305,6 +1311,8 @@ class RayPPOTrainer:
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         metrics.update(actor_output_metrics)
+                        if hasattr(self, '_after_training_update'):
+                            self._after_training_update(batch, metrics)
 
                     # Log rollout generations if enabled
                     rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
@@ -1322,6 +1330,12 @@ class RayPPOTrainer:
                                 dump_path=rollout_data_dir,
                             )
 
+                    # Commit resumable optimizer state before potentially long evaluation.
+                    protocol = self.config.get('omr', {}).get('protocol', False)
+                    if protocol and (self.global_steps == 2 or is_last_step or
+                                     self.global_steps % self.config.trainer.save_freq == 0):
+                        with _timer('save_checkpoint', timing_raw):
+                            self._save_checkpoint()
                     # validate
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
                         with _timer("testing", timing_raw):
@@ -1330,7 +1344,7 @@ class RayPPOTrainer:
                                 last_val_metrics = val_metrics
                         metrics.update(val_metrics)
 
-                    if self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
+                    if not protocol and self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
                         with _timer("save_checkpoint", timing_raw):
                             self._save_checkpoint()
 
@@ -1350,6 +1364,11 @@ class RayPPOTrainer:
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
+
+                if hasattr(self, '_stop_requested') and self._stop_requested():
+                    self._save_checkpoint()
+                    progress_bar.close()
+                    return
 
                 progress_bar.update(1)
                 self.global_steps += 1

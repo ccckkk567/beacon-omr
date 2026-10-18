@@ -1,4 +1,4 @@
-# Frozen intended protocol. Runtime/trainer integration is not ready yet.
+# Frozen protocol; baseline training is wired through experiments.omr.train_entry.
 algorithm:
   adv_estimator: migpo
   gamma: 0.95

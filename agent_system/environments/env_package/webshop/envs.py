@@ -175,6 +175,14 @@ class WebshopWorker:
         """Render the environment"""
         rendered = self.env.render(mode=mode_for_render)
         return rendered
+
+    def reset_explicit(self, task):
+        from experiments.omr.root_protocol import seed_root
+        seed_root(task['root_seed'])
+        obs, info = self.reset(task['target'])
+        if info['goal_id'] != task['id']:
+            raise ValueError('Native WebShop reset loaded a different goal identity')
+        return obs, info
     
     def get_available_actions(self):
         """Get available actions"""
@@ -264,14 +272,10 @@ class WebshopMultiProcessEnv(gym.Env):
                 f'Expected {self.num_processes} actions, got {len(actions)}',
             )
 
-        # Send step commands to all workers
-        futures = []
-        for worker, action in zip(self._workers, actions):
-            future = worker.step.remote(action)
-            futures.append(future)
+        from experiments.omr.root_protocol import step_workers
 
         # Collect results
-        results = ray.get(futures)
+        results = step_workers(self, self._workers, actions)
         obs_list, reward_list, done_list, info_list = [], [], [], []
         for obs, reward, done, info in results:
             obs_list.append(obs)
@@ -282,13 +286,14 @@ class WebshopMultiProcessEnv(gym.Env):
         return obs_list, reward_list, done_list, info_list
 
     def reset(self):
-        idx = self._rng.choice(self.goal_idxs, size=self.env_num, replace=False)
-        idx = np.repeat(idx, self.group_n).tolist()
+        tasks = getattr(self, 'omr_tasks', None)
+        idx = (np.repeat(self._rng.choice(self.goal_idxs, size=self.env_num, replace=False),
+                         self.group_n).tolist() if tasks is None else [None] * self.num_processes)
 
         # Send reset commands to all workers
         futures = []
-        for worker, i in zip(self._workers, idx):
-            future = worker.reset.remote(i)
+        for slot, (worker, i) in enumerate(zip(self._workers, idx)):
+            future = worker.reset.remote(i) if tasks is None else worker.reset_explicit.remote(tasks[slot])
             futures.append(future)
 
         # Collect results

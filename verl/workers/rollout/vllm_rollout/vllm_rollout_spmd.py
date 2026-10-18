@@ -285,9 +285,16 @@ class vLLMRollout(BaseRollout):
 
         # users can customize different sampling_params at different run
         with self.update_sampling_params(**kwargs):
+            sampling_params = self.sampling_params
+            if 'omr_generation_seed' in non_tensor_batch:
+                sampling_params = []
+                for seed in non_tensor_batch['omr_generation_seed']:
+                    params = deepcopy(self.sampling_params)
+                    params.seed = int(seed)
+                    sampling_params.append(params)
             outputs = self.inference_engine.generate(
                 prompts=vllm_inputs,  # because we have already convert it to prompt token id
-                sampling_params=self.sampling_params,
+                sampling_params=sampling_params,
                 lora_request=lora_requests,
                 use_tqdm=False,
             )

@@ -32,9 +32,14 @@ def main(config):
 def run_ppo(config) -> None:
     if not ray.is_initialized():
         # this is for local ray cluster
+        runtime_options = {}
+        if config.get('omr', {}).get('protocol', False):
+            runtime_options = {'address': 'local', 'include_dashboard': False,
+                               'object_store_memory': 4 * 1024 ** 3}
         ray.init(
             runtime_env={"env_vars": {"TOKENIZERS_PARALLELISM": "false", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "NCCL_DEBUG": "WARN", "VLLM_LOGGING_LEVEL": "WARN", "VLLM_ALLOW_RUNTIME_LORA_UPDATING": "true"}},
             num_cpus=config.ray_init.num_cpus,
+            **runtime_options,
         )
 
     runner = TaskRunner.remote()
@@ -53,6 +58,9 @@ class TaskRunner:
 
         pprint(OmegaConf.to_container(config, resolve=True))  # resolve=True will eval symbol values
         OmegaConf.resolve(config)
+        if config.get('omr', {}).get('protocol', False):
+            from experiments.omr.root_protocol import seed_root
+            seed_root(config.env.seed)
 
         # download the checkpoint from hdfs
         local_path = copy_to_local(config.actor_rollout_ref.model.path, use_shm=config.actor_rollout_ref.model.get("use_shm", False))
@@ -153,10 +161,17 @@ class TaskRunner:
 
         from verl.utils.dataset.rl_dataset import collate_fn
 
-        train_dataset = create_rl_dataset(config.data.train_files, config.data, tokenizer, processor)
-        val_dataset = create_rl_dataset(config.data.val_files, config.data, tokenizer, processor)
+        trainer_class = RayPPOTrainer
+        if config.get('omr', {}).get('protocol', False):
+            from experiments.omr.training import ProtocolTrainer, RolloutSlots
+            trainer_class = ProtocolTrainer
+            train_dataset = RolloutSlots(tokenizer, config.omr.benchmark, 16 * 150)
+            val_dataset = RolloutSlots(tokenizer, config.omr.benchmark, 16)
+        else:
+            train_dataset = create_rl_dataset(config.data.train_files, config.data, tokenizer, processor)
+            val_dataset = create_rl_dataset(config.data.val_files, config.data, tokenizer, processor)
         train_sampler = create_rl_sampler(config.data, train_dataset)
-        trainer = RayPPOTrainer(
+        trainer = trainer_class(
             config=config,
             tokenizer=tokenizer,
             processor=processor,
