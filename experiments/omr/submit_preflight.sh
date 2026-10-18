@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="${1:?Pass the assigned work root}"
 EXTRA="${2:?Pass the overflow model/data root}"
 INVENTORY="${3:?Pass the completed inventory JSON path}"
+SCOPE="${4:-all}"
+case "$SCOPE" in all|webshop) ;; *) printf 'Scope must be all or webshop\n' >&2; exit 2 ;; esac
 REPO="$ROOT/code/beacon-omr"
 test -r "$INVENTORY"
 test "$(git -C "$REPO" remote get-url origin)" = https://github.com/ccckkk567/beacon-omr.git
@@ -11,9 +13,9 @@ test "$(git -C "$REPO" branch --show-current)" = exp/beacon-online-milestone-reu
 test -z "$(git -C "$REPO" status --porcelain)"
 mkdir -p "$ROOT/logs/beacon-omr"
 JOB=$(sbatch --parsable --account=prjsnnn0000269 --partition=testqueue \
-  --gres=gpu:h200:2 --job-name=omr-preflight --cpus-per-task=8 --mem=48G --time=00:40:00 \
+  --gres=gpu:h200:2 --job-name=omr-preflight --cpus-per-task=8 --mem=48G --time=01:00:00 \
   --chdir="$ROOT" --output="$ROOT/logs/beacon-omr/preflight-%j.out" \
-  "$REPO/experiments/omr/preflight.sbatch" "$REPO" "$ROOT" "$EXTRA" "$INVENTORY")
+  "$REPO/experiments/omr/preflight.sbatch" "$REPO" "$ROOT" "$EXTRA" "$INVENTORY" "$SCOPE")
 JOB="${JOB%%;*}"
 printf 'GPU preflight job: %s\nAfter completion return this log:\ncat %q\n' \
   "$JOB" "$ROOT/logs/beacon-omr/preflight-$JOB.out"

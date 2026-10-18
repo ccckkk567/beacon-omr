@@ -192,7 +192,9 @@ def generate_product_prices(all_products):
     return product_prices
 
 
-def init_search_engine(num_products=None):
+def init_search_engine(num_products=None, index_path=None):
+    if index_path is not None:
+        return LuceneSearcher(os.fspath(index_path))
     if num_products == 100:
         indexes = 'indexes_100'
     elif num_products == 1000:
@@ -227,7 +229,8 @@ def clean_product_keys(products):
     return products
 
 
-def load_products(filepath, attrpath, num_products=None, human_goals=True):
+def load_products(filepath, attrpath, num_products=None, human_goals=True, human_attr_path=None):
+    human_attr_path = human_attr_path or HUMAN_ATTR_PATH
     # TODO: move to preprocessing step -> enforce single source of truth
     with open(filepath) as f:
         products = json.load(f)
@@ -243,11 +246,11 @@ def load_products(filepath, attrpath, num_products=None, human_goals=True):
     #     all_ratings[r['asin']] = r['average_rating']
 
     if human_goals:
-        with open(HUMAN_ATTR_PATH) as f:
+        with open(human_attr_path) as f:
             human_attributes = json.load(f)
     with open(attrpath) as f:
         attributes = json.load(f)
-    with open(HUMAN_ATTR_PATH) as f:
+    with open(human_attr_path) as f:
         human_attributes = json.load(f)
     print('Attributes loaded.')
 

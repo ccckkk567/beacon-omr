@@ -79,6 +79,8 @@ class WebAgentTextEnv(gym.Env):
             self.kwargs.get('num_products'),
             self.kwargs.get('human_goals'),
             self.kwargs.get('show_attrs', False),
+            index_path=self.kwargs.get('index_path'),
+            human_attr_path=self.kwargs.get('human_attr_path'),
         ) if server is None else server
         self.browser = SimBrowser(self.server)
 
@@ -299,6 +301,8 @@ class SimServer:
         num_products=None,
         human_goals=0,
         show_attrs=False,
+        index_path=None,
+        human_attr_path=None,
     ):
         """
         Constructor for simulated server serving WebShop application
@@ -312,8 +316,9 @@ class SimServer:
         # Load all products, goals, and search engine
         self.base_url = base_url
         self.all_products, self.product_item_dict, self.product_prices, _ = \
-            load_products(filepath=file_path, attrpath=attr_path, num_products=num_products, human_goals=human_goals)
-        self.search_engine = init_search_engine(num_products=num_products)
+            load_products(filepath=file_path, attrpath=attr_path, num_products=num_products,
+                          human_goals=human_goals, human_attr_path=human_attr_path)
+        self.search_engine = init_search_engine(num_products=num_products, index_path=index_path)
         self.goals = get_goals(self.all_products, self.product_prices, human_goals)
         self.show_attrs = show_attrs
 

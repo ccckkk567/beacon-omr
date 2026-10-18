@@ -7,6 +7,7 @@ REPO="$1"
 ROOT="$2"
 EXTRA="$3"
 INVENTORY="$4"
+SCOPE="${5:-all}"
 export PYTHONDONTWRITEBYTECODE=1
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
@@ -22,4 +23,4 @@ if type module >/dev/null 2>&1; then
 fi
 cd "$REPO"
 srun --ntasks=1 --kill-on-bad-exit=1 python3 -m experiments.omr.preflight \
-    --work-root "$ROOT" --extra-storage "$EXTRA" --inventory "$INVENTORY"
+    --work-root "$ROOT" --extra-storage "$EXTRA" --inventory "$INVENTORY" --scope "$SCOPE"

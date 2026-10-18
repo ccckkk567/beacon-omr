@@ -24,8 +24,9 @@ is inventory evidence, not permission to launch the formal six runs.
 
 The three ML environments passed their existing `pip check`. This checks installed
 distribution metadata; it does not establish compatibility with the new checkout.
-No discovered environment reports Pyserini or legacy Gym. A separate WebShop
-runtime and asset/index binding still need preparation.
+No environment in the first inventory reports Pyserini or legacy Gym. This does
+not rule out a virtual environment inside an old project; the follow-up now scans
+bounded `envs` and `code` paths and checks those interpreters explicitly.
 
 ## Changes motivated by this report
 
@@ -61,14 +62,29 @@ ScienceWorld step source, native completion status, score and JVM cleanup. No go
 actions are requested. An available Qwen tokenizer is read offline as a loader
 check; this does not select or certify the required model revision.
 
-The local suite has 30 passing tests and one symlink fixture skipped because the
+WebShop is now included explicitly. Every discovered interpreter gets real
+dependency imports, including Gym, Pyserini/JNI, spaCy's `en_core_web_sm`, and the
+vendored simulator. A complete adjacent product/attribute/human-attribute/index
+layout is required before interaction. Optional explicit native asset paths allow
+reuse without copying files or changing the old checkout. In a passing runtime,
+two independent servers execute reset/search/product-click with different worker
+seeds and the same manifest seed; native session transitions, goal identity and
+manifest hashes are checked. These are test-only dataset-query fixtures, not
+training or evaluation policy trajectories. Missing dependencies/assets produce
+explicit blockers; skipped interaction is never reported as passed.
+
+The default submission checks all three environments. Pass `webshop` as the fourth
+argument to `submit_preflight.sh` for a supplement if the earlier checks already
+ran. Wait for a running earlier job to finish before pulling into its checkout.
+
+The local suite has 35 passing tests and one symlink fixture skipped because the
 Windows process cannot create that link. The follow-up job also reruns the core
 fixtures in the existing HPC dependency stack, including that symlink test.
 
 Failed checks remain failed in the JSON; simulator fixture results do not enter
 training archives. Local tests do not establish that this GPU job has passed.
-Formal readiness still requires exact model provenance, native WebShop search and
-clicks, complete task manifests, integrated restart adapters, actual policy updates,
+Formal readiness still requires returned native interaction evidence, exact model
+provenance, complete task manifests, integrated restart adapters, actual policy updates,
 checkpoint/resume, and SwanLab upload/readback.
 
 Implementation references: [Python command-line isolation](https://docs.python.org/3/using/cmdline.html)

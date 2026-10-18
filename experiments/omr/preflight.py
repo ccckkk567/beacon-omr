@@ -14,6 +14,7 @@ import subprocess
 import time
 
 from experiments.omr.assets import inspect_assets
+from experiments.omr.webshop_probe import bindings, discover_prefixes
 
 
 def write_json(path, value):
@@ -73,6 +74,7 @@ class ProbeRunner:
                    TOKENIZERS_PARALLELISM='false', OMP_NUM_THREADS='1', MKL_NUM_THREADS='1',
                    OPENBLAS_NUM_THREADS='1', NUMBA_NUM_THREADS='1', SWANLAB_MODE='disabled',
                    JAVA_TOOL_OPTIONS='-XX:ActiveProcessorCount=2 -Xmx4g')
+        env['OMR_DETECTOR_LOG_DIR'] = str(self.directory / 'detector-logs')
         env.pop('PYTHONPATH', None)
         env.pop('PYTHONHOME', None)
         # These probes do not need credentials, including if inherited by sbatch.
@@ -118,11 +120,40 @@ class ProbeRunner:
         return self.finish(self.start(prefix, mode, payload), timeout)
 
 
+def check_webshop(runner, work, inventory, assets, probes):
+    discovery = discover_prefixes(work, inventory)
+    asset_bindings = bindings(assets)
+    report = {'environment_discovery': discovery, 'asset_bindings': asset_bindings,
+              'interaction_verified': False, 'blockers': []}
+    working = []
+    # Always attempt actual imports, even if the first inventory did not list
+    # Pyserini. The old metadata cannot substitute for a WebShop runtime check.
+    for prefix in discovery['prefixes']:
+        result = runner.run(prefix, 'webshop-dependencies', {}, timeout=90)
+        probes.append(result)
+        if result['probe']['status'] == 'passed':
+            working.append(prefix)
+    complete = [binding for binding in asset_bindings if not binding['missing']]
+    if not working:
+        report['blockers'].append('No discovered environment passed native WebShop dependency imports; see per-package failures')
+    if not complete:
+        report['blockers'].append('No complete adjacent product/attribute/human-attribute/Lucene-index binding found')
+    if working and complete:
+        result = runner.run(working[0], 'webshop-interaction', {'binding': complete[0]}, timeout=360)
+        probes.append(result)
+        report['selected_prefix'] = working[0]
+        report['interaction_verified'] = result['probe']['status'] == 'passed'
+        if not report['interaction_verified']:
+            report['blockers'].append('Native reset/search/click or cross-worker goal consistency failed')
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--work-root', required=True)
     parser.add_argument('--extra-storage', required=True)
     parser.add_argument('--inventory', required=True)
+    parser.add_argument('--scope', choices=('all', 'webshop'), default='all')
     args = parser.parse_args()
     if not os.environ.get('SLURM_JOB_ID'):
         parser.error('Run through the GPU preflight Slurm script')
@@ -134,30 +165,28 @@ def main():
     envs = candidates(inventory)
     report = {'schema': 1, 'job_id': os.environ['SLURM_JOB_ID'], 'source_commit': subprocess.check_output(
         ['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip(), 'test_only': True,
-        'training_ready': False, 'inventory_source': str(args.inventory), 'probes': []}
+        'training_ready': False, 'inventory_source': str(args.inventory), 'scope': args.scope, 'probes': []}
     report['assets'] = inspect_assets(asset_roots(work, extra), repo)
     write_json(directory / 'assets.json', report['assets'])
     runner = ProbeRunner(repo, directory)
-    for env in envs:
+    for env in envs if args.scope == 'all' else []:
         report['probes'].append(runner.run(env['prefix'], 'stack', {}, timeout=240))
     sci = next((env for env in envs if env['packages'].get('scienceworld')), None)
     alf = next((env for env in envs if env['packages'].get('alfworld')), None)
-    if sci:
+    if sci and args.scope == 'all':
         report['probes'].append(runner.run(sci['prefix'], 'scienceworld', {}, timeout=240))
-    else:
+    elif args.scope == 'all':
         report['scienceworld_blocker'] = 'No existing ScienceWorld package discovered'
     roots = [root for root in report['assets']['alfworld_roots']
              if root['grammar_present'] and 'train' in root['splits_present']]
-    if alf and roots:
+    if alf and roots and args.scope == 'all':
         report['probes'].append(runner.run(alf['prefix'], 'alfworld', {'alfworld_root': roots[0]['path']}, timeout=240))
-    else:
+    elif args.scope == 'all':
         report['alfworld_blocker'] = 'No complete ALFWorld package + logic/train root discovered'
-    report['webshop_status'] = {'interaction_verified': False,
-        'reason': 'Dedicated WebShop runtime and exact assets/index binding still required',
-        'existing_pyserini_prefixes': [env['prefix'] for env in envs if env['packages'].get('pyserini')]}
+    report['webshop_status'] = check_webshop(runner, work, inventory, report['assets'], report['probes'])
     # Reuse one 2.6 stack for actual two-process communication. No model weights.
     transport = sci or next((env for env in envs if env['packages'].get('torch') == '2.6.0'), None)
-    if transport:
+    if transport and args.scope == 'all':
         report['probes'].append(runner.run(transport['prefix'], 'core-fixtures', {}, timeout=120))
         rendezvous = (directory / 'nccl-rendezvous').resolve().as_uri()
         ranks = [runner.start(transport['prefix'], 'nccl-rank', {'rank': rank, 'rendezvous': rendezvous})

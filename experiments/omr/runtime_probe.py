@@ -241,8 +241,19 @@ def core_fixtures(payload):
             'errors': [(str(test), message[-4000:]) for test, message in result.errors]}
 
 
+def webshop_dependencies(payload):
+    from experiments.omr.webshop_probe import dependencies
+    return dependencies(payload)
+
+
+def webshop_interaction(payload):
+    from experiments.omr.webshop_probe import interaction
+    return interaction(payload)
+
+
 MODES = {'stack': stack, 'scienceworld': scienceworld, 'alfworld': alfworld,
-         'nccl-rank': nccl_rank, 'tokenizer': tokenizer, 'core-fixtures': core_fixtures}
+         'nccl-rank': nccl_rank, 'tokenizer': tokenizer, 'core-fixtures': core_fixtures,
+         'webshop-dependencies': webshop_dependencies, 'webshop-interaction': webshop_interaction}
 
 
 def execute(mode, payload):
@@ -260,5 +271,9 @@ def execute(mode, payload):
         elif mode == 'alfworld' and not result['independent_reset_and_prefix_equal']:
             report['status'] = 'failed'
         elif mode == 'core-fixtures' and not result['successful']:
+            report['status'] = 'failed'
+        elif mode == 'webshop-dependencies' and not result['all_imports_passed']:
+            report['status'] = 'failed'
+        elif mode == 'webshop-interaction' and not result['interaction_verified']:
             report['status'] = 'failed'
     return report

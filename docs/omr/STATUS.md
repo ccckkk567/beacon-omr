@@ -10,7 +10,7 @@ The OMR implementation is in progress. **Do not launch the six formal runs yet.*
 - Standalone archive, statistics, sampler, controller and payload store.
 - Standalone atomic latest-only checkpoint transaction with failure tests.
 - Single-writer SwanLab integration and explicit failed-run shutdown.
-- Local suite: 30 passed, 1 skipped (Windows cannot create the symlink fixture).
+- Local suite: 35 passed, 1 skipped (Windows cannot create the symlink fixture).
   Source compilation and submission-script syntax checks passed. The follow-up
   job reruns these fixtures in the existing HPC stack; GPU acceptance is separate.
 
@@ -31,6 +31,8 @@ load a large model, read credential values, or modify old experiments.
 The next command submits `preflight.sbatch` for symlink-aware asset discovery,
 isolated package/source imports, GPU kernels and NCCL, and bounded test-only native
 simulator interactions. Its returned report is needed before finalizing reuse.
+WebShop now has explicit project-local environment discovery, dependency imports,
+and real reset/search/click checks when an existing complete asset binding is found.
 
 ## Remaining implementation / acceptance
 
