@@ -46,6 +46,25 @@ small-catalog/NLP assets, builds and checks Lucene, tests purchase/reset receipt
 checks persistent Ray source imports, verifies/loads existing Qwen weights and
 exercises SwanLab offline logging.
 
+Latest returned preparation **165860**, source `71f4083`, passed package
+installation, preserved-package checks, `pip check`, WebShop dependencies, HF
+catalog preparation, Lucene build/catalog checks, native search/click/purchase/reset
+and Ray source provenance. It stopped in the monitoring adapter: SwanLab 0.10.2's
+`run.url` property raises in offline mode, even when accessed with `getattr` and a
+default. The existing-model hash/load check comes after monitoring and has not run.
+
+The adapter now reads cloud URL properties only in online mode. Offline attempts
+retain their run IDs and store `url: null`; logging and explicit success/failure
+shutdown are still required. Five monitoring regression tests pass, including
+an offline URL property that throws and an online URL retention check. The exact
+preparation monitoring function also passes with real SwanLab 0.10.2 in an isolated
+local Windows environment: both normal and intentional-failure attempts initialize,
+write metrics, retain run IDs with null URLs, and finish with the expected status.
+This is an offline SDK check, not GPU or online acceptance. Runtime requirements
+and both index-provenance source files are unchanged, so the retry
+reuses the prepared v3 environment, pinned assets and existing index. The GPU
+monitoring/model-load retry and online monitoring verification remain pending.
+
 Returned preparation job **165846**, source `6546d98`, stopped at dependency
 resolution with a BLIS/Cython source-build error. Java/base checks, creation of the
 isolated v1 venv and retrieval/verification of the English model wheel completed;
@@ -62,7 +81,7 @@ pins weasel 0.4.3 and allows only smart-open 7.7.1 to shadow its base counterpar
 inside a small v3 venv. It checks installed dependents before installation, installs
 only approved hashed artifacts without uninstalling base files, and verifies reused
 package versions/locations afterward. Base packages, cache and HF assets are reused;
-v1/v2 markers remain intact. The GPU retry is pending. No formal training or
+v1/v2 markers remain intact. Its GPU result is recorded above. No formal training or
 optimizer update has run.
 
 Before this fix, local checks covered 45 fixtures (44 passed; the Windows symlink fixture is
@@ -85,8 +104,8 @@ Submission scripts pass Bash syntax checking. These are not HPC acceptance resul
 
 ## Remaining implementation / acceptance
 
-1. Select compatible existing environment/model/data paths; prepare missing assets
-   through Hugging Face and configure dependencies on GPU compute nodes only.
+1. Complete the SwanLab and existing-model load checks using the prepared runtime
+   and assets. Preserve the returned ALFWorld/ScienceWorld/WebShop evidence.
 2. Implement native per-environment restart adapters and explicit task manifests;
    integrate same-start groups, history/detector state and H new actions.
 3. Connect controller commits, complete records, cost ledger, atomic checkpoint and

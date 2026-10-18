@@ -125,6 +125,16 @@ Further bounded checks in the same job:
   upload/readback remains unverified. SDK argument names follow its installed
   public signature instead of relying on deprecated aliases.
 
+Job 165860 passed through native interaction and Ray, then exposed an adapter
+bug: SwanLab 0.10.2's `run.url` property raises `ValueError` offline. Cloud URL
+properties are now accessed only for online runs; offline receipts retain run ID
+and `url: null`. The runtime requirements and index converter/engine sources are
+unchanged by this fix. A retry reuses v3 and the prepared assets/index, verifies
+their identities, and reruns acceptance before attempting the existing-model load.
+The same monitoring function passed normal and intentional-failure attempts with
+real SwanLab 0.10.2 in an isolated local Windows runtime; GPU and online acceptance
+remain separate.
+
 Raw logs and full `report.json` stay in the private evidence directory. A compact
 summary is printed to the Slurm log; `site.json` is emitted only when all preparation
 checks pass. `training_ready` stays false until integrated OMR, two-GPU updates,

@@ -72,9 +72,16 @@ class SwanLabMonitor:
         # overwrite the user's shared login state with swanlab.login().
         self.run = sdk.init(**kwargs)
         public = getattr(self.run, 'public', None)
+        # In SwanLab 0.10.2, url is a property that raises ValueError offline.
+        # getattr(..., None) still invokes that property. Do not touch either
+        # cloud URL path unless the run was explicitly initialized online.
+        url = None
+        if self.mode == 'online':
+            url = (getattr(self.run, 'url', None)
+                   or getattr(getattr(public, 'cloud', None), 'experiment_url', None))
         self.status.update(status='offline_pending_sync' if self.mode in ('offline', 'local') else 'online_unverified',
                            run_id=getattr(self.run, 'id', None) or getattr(public, 'run_id', None),
-                           url=getattr(self.run, 'url', None) or getattr(getattr(public, 'cloud', None), 'experiment_url', None))
+                           url=url)
         atomic_json(self.status_path, self.status)
 
     def log(self, data, step):
