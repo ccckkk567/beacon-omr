@@ -132,3 +132,15 @@ data/
 .tmp
 *ports
 
+
+# OMR runtime-only files
+experiments/omr/site.env
+experiments/omr/site.local.*
+*.env
+!*.env.example
+.omr-local/
+runs/
+.swanlab/
+swanlog/
+*.safetensors
+
