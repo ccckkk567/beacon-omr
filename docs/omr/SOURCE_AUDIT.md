@@ -61,7 +61,7 @@ upstream Run.finish; the installed HPC version remains authoritative:
 - https://docs.swanlab.cn/guide_cloud/experiment_track/resume-experiment.html
 - https://github.com/SwanHubX/SwanLab/blob/main/swanlab/sdk/internal/run/__init__.py
 
-## Additional issues found; still open
+## Initial audit gaps (historical; current resolution below)
 
 - The ALF TextWorld limit and ScienceWorld `env_step_limit` still need a separate
   replay-prefix allowance plus H new actions without resetting native world time.
@@ -84,3 +84,25 @@ evidence of Orion simulator/GPU readiness. The user has since returned Slurm
 inventory job 165833, confirming two H200 devices are visible through existing
 Torch installations; see `SITE_PREPARATION.md`. Actual environment interaction,
 training updates, SwanLab uploads and model checkpoints remain unverified.
+
+## Protocol v2 integration
+
+The historical integration gaps above are now connected in the trainer. The
+baseline/full arms share explicit manifests, root-only evaluation, terminal
+freezing, complete interaction/cost logs, native optimizer/rollout version
+receipts and the latest-only checkpoint transaction. Full adds independent native
+replay, whole-group fallback, milestone-offset/history restoration, the frozen
+sampler view and post-optimizer q/D/archive commit. See `FULL_OMR.md`.
+
+Common v2 changes are deliberate and require a fresh matched pair: artificial
+ALF/ScienceWorld limits no longer terminate an H-step collector early; ALF loads
+the explicit game with its explicit seed; WebShop retains history=2 above the
+old character cutoff and obeys the common token-overflow error. Old v1 baseline
+results cannot be treated as the v2 comparator. The actual reward equations and
+per-benchmark optimizer profiles are unchanged.
+
+ScienceWorld replay checks native task/variation, score/completion and legal-action
+receipts, preserving the original API order; observation wording differences
+are recorded and actual replay observations rebuild history. It is a bounded
+contract, not an assertion that all hidden Java state has been snapshotted.
+Native correctness and two-GPU execution still require returned run evidence.

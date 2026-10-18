@@ -298,8 +298,12 @@ class TrajectoryCollector:
         batch_size = len(gen_batch.batch)
 
         # Initial observations from the environment
-        obs, infos = envs.reset(kwargs=gen_batch.non_tensor_batch.pop('env_kwargs', None))
         observer = getattr(envs, 'omr_observer', None)
+        reset_kwargs = gen_batch.non_tensor_batch.pop('env_kwargs', None)
+        if observer is not None and hasattr(observer, 'initialize'):
+            obs, infos = observer.initialize()
+        else:
+            obs, infos = envs.reset(kwargs=reset_kwargs)
         if observer is not None:
             observer.reset(obs, infos)
 
@@ -347,6 +351,7 @@ class TrajectoryCollector:
 
             batch_input.meta_info = gen_batch.meta_info
             if observer is not None:
+                batch_input.meta_info['omr_expected_policy_version'] = observer.update
                 batch_input.non_tensor_batch['omr_generation_seed'] = np.array(
                     observer.generation_seeds(_step), dtype=np.int64)
 
@@ -410,7 +415,10 @@ class TrajectoryCollector:
             batch.non_tensor_batch['rewards'] = torch_to_numpy(rewards, is_object=True)
             batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
             if observer is not None:
-                observer.record(batch, obs, next_obs, infos, rewards, dones, active_masks, _step)
+                try:
+                    observer.record(batch, obs, next_obs, infos, rewards, dones, active_masks, _step)
+                finally:
+                    observer.flush()
             
             # Update episode lengths for active environments
             batch_list: list[dict] = to_list_of_dict(batch)

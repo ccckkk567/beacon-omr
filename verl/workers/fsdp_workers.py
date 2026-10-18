@@ -592,6 +592,9 @@ class ActorRolloutRefWorker(Worker):
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def update_actor(self, data: DataProto):
+        omr_version = data.meta_info.get('omr_next_policy_version')
+        if omr_version is not None and omr_version != getattr(self, '_omr_policy_version', 0) + 1:
+            raise ValueError('Optimizer policy version is not sequential')
         # Support all hardwares
         data = data.to(get_torch_device().current_device())
 
@@ -606,6 +609,9 @@ class ActorRolloutRefWorker(Worker):
             # perform training
             with Timer(name="update_policy", logger=None) as timer:
                 metrics = self.actor.update_policy(data=data)
+            if omr_version is not None:
+                self._omr_policy_version = omr_version
+                metrics['protocol/optimizer_policy_version'] = omr_version
             delta_time = timer.last
             global_num_tokens = data.meta_info["global_token_num"]
             estimated_flops, promised_flops = self.flops_counter.estimate_flops(global_num_tokens, delta_time)
@@ -635,6 +641,9 @@ class ActorRolloutRefWorker(Worker):
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def generate_sequences(self, prompts: DataProto):
+        omr_version = prompts.meta_info.get('omr_expected_policy_version')
+        if omr_version is not None and omr_version != getattr(self, '_omr_policy_version', 0):
+            raise ValueError('Rollout requested a policy version different from the loaded actor')
         # Support all hardwares
         prompts = prompts.to(get_torch_device().current_device())
 
@@ -645,11 +654,19 @@ class ActorRolloutRefWorker(Worker):
             "pad_token_id": self.generation_config.pad_token_id if self.generation_config is not None else self.tokenizer.pad_token_id,
         }
         prompts.meta_info.update(meta_info)
+        before_sync = getattr(self.rollout_sharding_manager, 'omr_sync_sequence', 0)
         with self.rollout_sharding_manager:
+            if omr_version is not None and getattr(self.rollout_sharding_manager, 'omr_sync_sequence', 0) <= before_sync:
+                raise RuntimeError('Rollout did not execute the native weight synchronization path')
             log_gpu_memory_usage("After entering rollout sharding manager", logger=logger)
 
             prompts = self.rollout_sharding_manager.preprocess_data(prompts)
             output = self.rollout.generate_sequences(prompts=prompts)
+            if omr_version is not None:
+                import numpy as np
+                output.non_tensor_batch['omr_synced_policy_version'] = np.full(len(output), omr_version, dtype=np.int64)
+                output.non_tensor_batch['omr_weight_sync_sequence'] = np.full(
+                    len(output), self.rollout_sharding_manager.omr_sync_sequence, dtype=np.int64)
             
             log_gpu_memory_usage("After rollout generation", logger=logger)
 
@@ -784,6 +801,12 @@ class ActorRolloutRefWorker(Worker):
             load_fsdp_model_to_gpu(self.actor_module_fsdp)
 
         self.checkpoint_manager.load_checkpoint(local_path=local_path, hdfs_path=hdfs_path, del_local_after_load=del_local_after_load)
+        if local_path is not None:
+            import json
+            receipt_path = os.path.join(os.path.dirname(local_path), 'omr-policy.json')
+            if os.path.isfile(receipt_path):
+                with open(receipt_path) as stream:
+                    self._omr_policy_version = int(json.load(stream)['policy_version'])
 
         if self._is_offload_param:
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)

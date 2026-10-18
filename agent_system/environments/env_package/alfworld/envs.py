@@ -21,6 +21,7 @@ import numpy as np
 import torch
 import torchvision.transforms as T
 import ray
+from agent_system.milestone_reuse.native_restart import RestartWorkerMixin
 
 from agent_system.environments.env_package.alfworld.alfworld.agents.environment import get_environment
 
@@ -52,7 +53,7 @@ def compute_reward(info, multi_modal=False):
         reward = 10.0 * float(info['won'])
     return reward
 
-class AlfworldWorker:
+class AlfworldWorker(RestartWorkerMixin):
     """
     Ray remote actor that replaces the worker function.
     Each actor holds one environment instance.
@@ -90,6 +91,7 @@ class AlfworldWorker:
     def reset_explicit(self, task):
         from experiments.omr.root_protocol import seed_root
         seed_root(task['root_seed'])
+        self.env.seed(task['root_seed'])
         native = self.env.unwrapped
         previous = native._gamefiles_iterator
         native._gamefiles_iterator = iter([task['target']])
@@ -114,6 +116,11 @@ class AlfworldEnvs(gym.Env):
             
         eval_dataset = env_kwargs.get('eval_dataset', 'eval_in_distribution')
         config = load_config_file(alf_config_path)
+        if env_kwargs.get('omr_protocol'):
+            # The collector owns H. Keep real world time/termination, removing
+            # only TextWorld's separate artificial collection cutoff.
+            for method in ('rl', 'dagger'):
+                config[method]['training']['max_nb_steps_per_episode'] = 2 ** 31 - 1
         env_type = config['env']['type']
         split = 'train' if is_train else eval_dataset
         worker_python = env_kwargs.get('worker_python')

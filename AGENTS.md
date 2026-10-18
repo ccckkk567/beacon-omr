@@ -23,11 +23,15 @@ Current user overrides to the execution specification:
 - Keep local site paths and all credentials outside Git. Do not print credentials
   or a complete environment-variable dump.
 - Stop separate readiness/probe rounds. Reuse accepted evidence and advance real
-  training; essential protocol checks execute inside the training job. Begin the
-  three baselines while completing OMR integration. Never label baseline as full.
+  training; essential protocol checks execute inside the training job. Both arms
+  must use the same frozen source and common protocol. Never label baseline as full.
 - Submit independent ready benchmark runs concurrently, with two H200 per run
-  (six H200 for all three). Let Slurm queue for available resources; do not impose
+  (twelve H200 for three benchmarks times baseline/full). Let Slurm queue for available resources; do not impose
   a one-at-a-time throttle or benchmark completion dependencies.
+- The user submitted the earlier v1 baseline array; its job ID is still pending.
+  Preserve it and its records. Protocol v2 fixes common horizon/history semantics;
+  v1 baseline must not be used as the formal comparator for v2 Full OMR. Do not
+  silently resume v1 checkpoints under v2 or cancel unidentified jobs.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

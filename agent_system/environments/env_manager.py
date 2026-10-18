@@ -498,7 +498,7 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
                     current_observation=text_obs[i],
                     available_actions=reformatted_available_actions
                 )
-                if len(obs) > 13000:
+                if len(obs) > 13000 and not getattr(getattr(self.config, 'omr', None), 'protocol', False):
                     print(f"Warning len(obs)={len(obs)} is too long")
                     obs = WEBSHOP_TEMPLATE_NO_HIS.format(
                         task_description=self.tasks[i],
@@ -751,6 +751,7 @@ def make_envs(config):
         env_kwargs = {
             'eval_dataset': config.env.alfworld.eval_dataset, # 'eval_in_distribution' or 'eval_out_of_distribution'
             'worker_python': config.env.alfworld.get('worker_python'),
+            'omr_protocol': config.get('omr', {}).get('protocol', False),
         }
         _envs = build_alfworld_envs(alf_config_path, config.env.seed, config.data.train_batch_size, group_n, is_train=True, env_kwargs=env_kwargs, resources_per_worker=resources_per_worker)
         _val_envs = build_alfworld_envs(alf_config_path, config.env.seed + 1000, config.data.val_batch_size, 1, is_train=False, env_kwargs=env_kwargs, resources_per_worker=resources_per_worker)
@@ -816,7 +817,8 @@ def make_envs(config):
         # Prepare environment kwargs (like WebShop's env_kwargs)
         env_kwargs = {
             'jar_path': jar_path,
-            'env_step_limit': config.env.max_steps,
+            'env_step_limit': (2 ** 31 - 1 if config.get('omr', {}).get('protocol', False)
+                               else config.env.max_steps),
             'simplifications_preset': config.env.sciworld.get('simplifications_preset', 'easy'),
             'variations_idx': variations_idx
         }

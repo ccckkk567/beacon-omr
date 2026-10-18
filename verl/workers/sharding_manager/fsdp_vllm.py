@@ -205,6 +205,8 @@ class FSDPVLLMShardingManager(BaseShardingManager):
             if "tags" in inspect.signature(self.inference_engine.wake_up).parameters:
                 self.inference_engine.wake_up(tags=["kv_cache"])
 
+        # A receipt is issued only after the real weight-loading path returns.
+        self.omr_sync_sequence = getattr(self, 'omr_sync_sequence', 0) + 1
         log_gpu_memory_usage("After del state_dict and empty_cache in sharding manager", logger=logger)
 
         # important: need to manually set the random states of each tp to be identical.

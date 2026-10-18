@@ -43,12 +43,13 @@ def main():
     parser.add_argument('--root', required=True)
     parser.add_argument('--prepared-report', required=True)
     parser.add_argument('--benchmark', choices=['alfworld', 'webshop', 'scienceworld'], required=True)
+    parser.add_argument('--method', choices=['baseline', 'full'], required=True)
     args = parser.parse_args()
     if not os.environ.get('SLURM_JOB_ID'):
         parser.error('Training must run inside an allocated two-GPU Slurm job')
     import fcntl
     root = Path(args.root).absolute()
-    run_id = f'omr-v1-{args.benchmark}-baseline-s0'
+    run_id = f'omr-v2-{args.benchmark}-{args.method}-s0'
     run_dir = root / 'analysis/beacon-omr' / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     # A duplicate submission must never write the same logical run concurrently.
@@ -69,7 +70,7 @@ def main():
             actor_runtime = reused_runtime(root, 'beacon-omr-alf-simulator-v1',
                                            root / 'envs/gigpo-alfworld-py312-v1')
         commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip()
-        payload = {'root': str(root), 'benchmark': args.benchmark, 'run_id': run_id,
+        payload = {'root': str(root), 'benchmark': args.benchmark, 'method': args.method, 'run_id': run_id,
             'run_dir': str(run_dir), 'attempt_dir': str(attempt), 'source_commit': commit,
             'model': site['model'], 'webshop': site['webshop'], 'prepared_source': site['source_commit'],
             'runtime': str(runtime), 'simulator_python': str(actor_runtime / 'bin/python') if actor_runtime else None}
@@ -94,7 +95,7 @@ def main():
         java = shutil.which('java', path=env['PATH'])
         if java:
             env['JAVA_HOME'] = str(Path(java).resolve().parent.parent)
-        print(f'TRAIN {args.benchmark} baseline: 150 updates, B16 x G8, 2 H200', flush=True)
+        print(f'TRAIN {args.benchmark} {args.method}: 150 updates, B16 x G8, 2 H200', flush=True)
         print(f'PROGRESS {run_dir / "progress.json"}', flush=True)
         started = time.time()
         atomic_json(attempt / 'allocation.json', {'started_at': started, 'allocated_gpus': 2,

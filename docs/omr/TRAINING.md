@@ -1,9 +1,9 @@
-# Three-benchmark training
+# Three-benchmark baseline / Full OMR training
 
 The user requested actual training instead of further standalone checks. The
-first wave trains **baseline** on ALFWorld, WebShop and ScienceWorld. Full OMR is
-still being integrated; the trainer refuses `omr.enabled=true` until that path is
-implemented. This is not a claim that HPC training has already succeeded.
+launcher supports **baseline and Full OMR** on ALFWorld, WebShop and ScienceWorld.
+Both arms use the same frozen source. Native GPU training and learning curves
+remain unverified until actual job logs are returned.
 
 ## Run
 
@@ -12,23 +12,33 @@ and the full published revision supplied in the chat:
 
 ```bash
 bash "$ROOT/code/beacon-omr/experiments/omr/submit_training.sh" \
-  "$ROOT" "$ROOT/evidence/beacon-omr/webshop-prepare-165873/report.json" "$REV"
+  "$ROOT" "$ROOT/evidence/beacon-omr/webshop-prepare-165873/report.json" "$REV" all both
 ```
 
 The script freezes a clean detached source checkout without touching the four
-modified files in the user's existing checkout. It submits array `0-2%3`:
-0 ALFWorld, 1 WebShop, 2 ScienceWorld. Each element uses two H200, 32 CPUs, 256 GiB
-RAM and up to 18 hours on testqueue. All three may run concurrently, using six
-H200 in total when resources are available; Slurm queues elements as needed.
+modified files in the user's existing checkout. It submits array `0-5%6`:
+0/1/2 are ALFWorld/WebShop/ScienceWorld baseline; 3/4/5 are the corresponding full
+arms. Each element uses two H200, 32 CPUs, 256 GiB RAM and up to 18 hours on
+testqueue. All six may run concurrently, using twelve H200 in total when
+resources are available; Slurm queues elements as needed.
 There is no dependency or prescribed start order between benchmarks. Failure of
 one element does not cancel the others. These are training jobs, with no separate
 environment, model, index or transport probe beforehand.
 
-To resume one benchmark, repeat the command with `alfworld`, `webshop` or
-`scienceworld` as its fourth argument and the **same revision**. The job locks its
+To submit/resume one condition, use `alfworld`, `webshop` or `scienceworld` as the
+fourth argument and `baseline` or `full` as the fifth, with the **same revision**.
+`all baseline` and `all full` submit three independent jobs. The job locks its
 logical run, verifies the complete latest checkpoint and continues the exact task
 schedule. If source/protocol/manifest changed, it refuses an implicit migration.
 An already completed latest run does not perform extra optimizer updates.
+
+**Protocol v2 is a new comparison.** The user already submitted the v1 baseline
+array from `7a982c1`; its ID/status have not yet been returned. Preserve those jobs
+and results. v2 makes common fixes to native artificial limits, explicit ALF root
+seeding and WebShop history rendering, and adds native weight-sync receipts.
+Do not compare a v1 baseline with v2 full or migrate its model silently. Run the
+v2 baseline/full pair from the same commit; old job cancellation requires its
+exact identified array ID, never a blanket cancellation by user or partition.
 
 Slurm requests a stop 20 minutes before the time limit. The trainer saves after a
 complete update and can interrupt evaluation between batches. To request an
@@ -41,7 +51,7 @@ at startup. Do not cancel unrelated jobs or delete old experiment directories.
   trajectories. H is 30/15/30 for ALF/Web/Sci. Frozen method-specific profiles
   remain in `experiments/omr/configs` and the resolved config is saved per attempt.
 - Native instance manifests are frozen under `analysis/beacon-omr/manifests` and
-  shared by the future full arm. The upstream entry points have train/test pools;
+  shared by both arms under a creation lock. The upstream entry points have train/test pools;
   a proportional, deterministic `min(128, floor(train_size/10))` validation holdout
   is removed from train. Final test is a prespecified stratified maximum of 300.
   ALF test remains **valid_seen**, not unseen. Web uses canonical goal identities.
@@ -57,6 +67,13 @@ at startup. Do not cancel unrelated jobs or delete old experiment directories.
   are not stepped again while other slots continue.
 - vLLM uses explicit per-request seeds. Evaluation does not advance a training
   sampling RNG. The ordinary BEACON optimizer, reward and MiGPO computations run.
+- Native artificial step cutoffs are raised for both arms; the collector owns H.
+  Real world clocks, resource depletion and native terminal flags remain active.
+  ALF explicitly seeds the loaded game. WebShop keeps its configured history=2
+  instead of dropping history at 13,000 characters; token overflow still errors.
+- Worker receipts verify the actor update version and successful execution of
+  the native FSDP-to-vLLM loading path before generation. These receipts are
+  retained per step; they are not a substitute for returned GPU execution logs.
 
 ## Reuse and records
 
@@ -69,15 +86,17 @@ hooks. Concurrent jobs lock only the short creation of their shared wrapper,
 then train independently. No package installation or asset download occurs in
 these launchers.
 
-Each logical run is under `analysis/beacon-omr/omr-v1-<benchmark>-baseline-s0`:
+Each logical run is under `analysis/beacon-omr/omr-v2-<benchmark>-<method>-s0`:
 
 - `progress.json`: current status and update; `attempts/<job>/launch.json` and
   `resolved-config.json`: provenance and effective parameters.
 - `attempts/<job>/rollouts`: compressed actual prompts, responses, executed
-  actions, native receipts, terminal outcomes and episode records.
+  actions, native receipts, terminal outcomes and episode records. Each action
+  round is flushed, including partial collections interrupted before an update.
 - `attempts/<job>/optimization`: unique new-step reward/logprob/trajectory,
   segment and joint advantage summaries. Hardware padding is excluded.
-- `cost-ledger`: immutable collection records, including work later rolled back;
+- `cost-ledger`: completed collection records, including work later rolled back;
+  an in-progress collection updates its own partial record until completion.
   `allocation.json` records attempt wall time and allocated GPU-hours when the
   launcher can close normally. Forced kills can leave incomplete allocation
   receipts and must not be counted as zero cost.
@@ -90,7 +109,10 @@ Each logical run is under `analysis/beacon-omr/omr-v1-<benchmark>-baseline-s0`:
   monitoring lineage are saved. A new complete generation commits before the
   previous owned generation is removed. Scientific records are retained.
 
-The baseline has no archive or restore snapshots. Full will require its own
-archive/controller/payload checkpoint state before it can be launched. Local
-tests cover configuration, split isolation, terminal handling and checkpoint
-failure/recovery; native two-GPU execution must be established by returned logs.
+The baseline has no archive or restore snapshots. Full additionally persists
+archive entries, decayed q/D counts, historical discovery, threshold activation,
+sampler RNG/reservations at completed boundaries and verified payload references.
+Its payload collector protects both the active pool and the current complete
+model checkpoint before deleting unreferenced recovery material. Full evaluation
+still uses independent root-only workers. See `FULL_OMR.md` for the integration
+contract and test boundary; native two-GPU evidence must come from returned logs.

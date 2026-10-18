@@ -1,0 +1,253 @@
+"""Online milestone reuse inside the native BEACON collector/update lifecycle."""
+from collections import Counter
+from copy import copy, deepcopy
+from dataclasses import asdict
+from pathlib import Path
+import time
+
+from agent_system.milestone_reuse.archive import Archive
+from agent_system.milestone_reuse.controller import ReuseController
+from agent_system.milestone_reuse.events import EventTrace, score_event
+from agent_system.milestone_reuse.native_restart import render_starts, workers_of
+from agent_system.milestone_reuse.persistence import PayloadStore
+from agent_system.milestone_reuse.sampler import RestartSampler
+from agent_system.milestone_reuse.statistics import Statistics
+from agent_system.milestone_reuse.types import TaskSpec, StateEntry, RolloutOutcome, content_id
+from .latest_checkpoint import atomic_json
+from .root_protocol import RootCollectorObserver, dump_records
+
+
+class FullCollectorObserver(RootCollectorObserver):
+    def __init__(self, config, manager, manifest, directory, tokenizer):
+        super().__init__(config, manager, manifest, directory)
+        c = config.omr
+        self.controller = ReuseController(
+            Archive(c.archive.max_entries_total, c.archive.max_entries_per_task,
+                    c.archive.max_entries_per_coverage_key, c.archive.max_untried_per_task),
+            Statistics(c.statistics.half_life_updates, c.statistics.success_prior_a,
+                       c.statistics.success_prior_b, c.statistics.evidence_reference_trials),
+            RestartSampler(seed=config.env.seed, alpha=c.restart_fraction,
+                eta=c.priority.base_weight, beta=c.priority.discovery_weight,
+                rho=c.mixture.staleness, epsilon=c.mixture.coverage, stale_cap=c.staleness_cap_updates),
+            group_size=config.env.rollout.n)
+        self.store = PayloadStore(Path(config.omr.run_dir) / 'restore-payloads')
+        self.thresholds = {}
+        self.tokenizer = tokenizer
+        self.latest_payload_refs = set()
+
+    def task_spec(self, task):
+        return TaskSpec(self.benchmark, 'train', str(task.get('family')), task['id'],
+                        {'manifest': self.manifest['sha256'], 'target': task['target'],
+                         'root_seed': task['root_seed']})
+
+    def plan(self, tasks, **kwargs):
+        super().plan(tasks, **kwargs)
+        if self.split != 'train':
+            raise ValueError('Full OMR is prohibited in evaluation')
+        self.manager.envs._omr_full_collection = True
+        self.controller.begin(self.update)
+        self.plans = []
+        self.specs = [self.task_spec(task) for task in self.tasks]
+        for slot in range(0, len(tasks), self.group_n):
+            self.plans.append(self.controller.plan(self.specs[slot], f'{self.collection_id}:g{slot // self.group_n}'))
+        self.actual_ids = [plan.checkpoint_id for plan in self.plans for _ in range(self.group_n)]
+        self.candidates, self.pending_counts, self.new_thresholds = [], Counter(), {}
+        self.restore_rows = []
+        self.compute.update(replayed_action_steps=0, restore_worker_seconds=0., capture_seconds=0.,
+                            restore_failed_groups=0)
+
+    def _group_render(self, packets):
+        local = copy(self.manager)
+        local.envs = copy(self.manager.envs)
+        local.memory = type(self.manager.memory)()
+        observations, _ = render_starts(local, self.benchmark, packets)
+        if len(set(observations['text'])) != 1:
+            raise ValueError('Group members did not restore the same concrete input history')
+
+    def initialize(self):
+        import ray
+        workers = workers_of(self.manager)
+        payloads = {key: self.store.get(self.controller.archive.entries[key].restore_payload_ref)['payload']
+                    for key in set(self.actual_ids) if key is not None}
+        packets = ray.get([worker.omr_reset.remote(self.benchmark, task, payloads.get(key),
+                    self.config.env.max_steps, f'{self.collection_id}:s{slot}')
+                  for slot, (worker, task, key) in enumerate(zip(workers, self.tasks, self.actual_ids))])
+        for group, plan in enumerate(self.plans):
+            start, end = group * self.group_n, (group + 1) * self.group_n
+            attempted = packets[start:end]
+            error = next((row['error'] for row in attempted if not row['ok']), None)
+            if error is None:
+                try:
+                    self._group_render(attempted)
+                except ValueError as problem:
+                    error = str(problem)
+            cost_rows = list(attempted)
+            if error is not None:
+                if plan.checkpoint_id is None:
+                    raise RuntimeError('Native root group failed: ' + error)
+                self.controller.archive.quarantine(plan.checkpoint_id)
+                self.compute['restore_failed_groups'] += 1
+                fallback = ray.get([workers[i].omr_reset.remote(self.benchmark, self.tasks[i], None,
+                    self.config.env.max_steps, f'{self.collection_id}:s{i}:root-fallback') for i in range(start, end)])
+                self._group_render(fallback)  # Failure of this sole fallback aborts the job.
+                packets[start:end] = fallback
+                cost_rows.extend(fallback)
+                self.actual_ids[start:end] = [None] * self.group_n
+            self.compute['replayed_action_steps'] += sum(row['replay_actions'] for row in cost_rows)
+            self.compute['restore_worker_seconds'] += sum(row['restore_seconds'] for row in cost_rows)
+            self.restore_rows.append(dict(asdict(plan), actual_checkpoint_id=self.actual_ids[start],
+                fallback_reason=error or plan.fallback_reason, worker_receipts=cost_rows))
+        observations, infos = render_starts(self.manager, self.benchmark, packets)
+        contexts = ray.get([worker.omr_event_context.remote() for worker in workers])
+        self.traces = []
+        for i, task in enumerate(self.tasks):
+            entry = self.controller.archive.entries.get(self.actual_ids[i])
+            initial = entry.detector_state if entry else None
+            trace = EventTrace(self.benchmark, task, self.thresholds.get(task['id'], []), initial,
+                contexts[i].get('web_options_required', False),
+                float(infos[i].get('score', infos[i].get('task_score', 0.))),
+                self.config.algorithm.migpo.threshold)
+            self.traces.append(trace)
+        self.start_infos = deepcopy(infos)
+        dump_records(self.directory / (self.collection_id + '-starts.jsonl.gz'), self.restore_rows)
+        self.flush()
+        return observations, infos
+
+    def record(self, batch, observations, next_observations, infos, rewards, dones, active, local_step):
+        import numpy as np
+        import ray
+        before = len(self.steps)
+        super().record(batch, observations, next_observations, infos, rewards, dones, active, local_step)
+        modes = ['restart' if key is not None else 'root' for key in self.actual_ids]
+        batch.non_tensor_batch['start_mode'] = np.array(modes, dtype=object)
+        batch.non_tensor_batch['start_id'] = np.array([key or 'root:' + spec.key
+                                                      for key, spec in zip(self.actual_ids, self.specs)], dtype=object)
+        batch.non_tensor_batch['initial_milestone_index'] = np.array(
+            [trace.initial_offset if self.benchmark == 'alfworld' else
+             int(self.start_infos[i].get('milestone_phase', 1)) - 1
+             for i, trace in enumerate(self.traces)], dtype=np.int32)
+        for row in self.steps[before:]:
+            slot = row['slot']
+            row.update(start_mode=modes[slot], start_id=batch.non_tensor_batch['start_id'][slot],
+                       requested_start_id=self.plans[slot // self.group_n].checkpoint_id,
+                       planned_group_id=self.plans[slot // self.group_n].group_id)
+        captures = []
+        workers = workers_of(self.manager)
+        for slot, trace in enumerate(self.traces):
+            if not active[slot]:
+                continue
+            info = infos[slot]
+            category = trace.observe(info['executed_action'], next_observations['anchor'][slot], info, bool(dones[slot]))
+            self.new_thresholds.setdefault(self.tasks[slot]['id'], set()).update(trace.observed_scores)
+            if category is None or dones[slot]:
+                continue
+            candidate = {'slot': slot, 'category': category, 'local_step': local_step,
+                         'task_id': self.tasks[slot]['id'], 'source_rollout_id': str(batch.non_tensor_batch['traj_uid'][slot])}
+            self.candidates.append(candidate)
+            text = next_observations['text'][slot]
+            prompt = self.tokenizer.apply_chat_template([{'role': 'user', 'content': text}],
+                                                        tokenize=False, add_generation_prompt=True)
+            if len(self.tokenizer(prompt, add_special_tokens=False)['input_ids']) > self.config.data.max_prompt_length:
+                candidate['rejection'] = 'context_unusable'
+                continue
+            task_key = self.specs[slot].key
+            pending = sum(entry.untried for entry in self.controller.archive.for_task(task_key))
+            if pending + self.pending_counts[task_key] >= self.config.omr.archive.max_untried_per_task:
+                candidate['rejection'] = 'pending_capacity'
+                continue
+            self.pending_counts[task_key] += 1
+            manager_state = {'task_text': self.manager.tasks[slot],
+                'pre_text_obs': self.manager.pre_text_obs[slot], 'memory': deepcopy(self.manager.memory[slot]),
+                'rendered_observation': text, 'history_length': self.config.env.history_length}
+            candidate['entry_fields'] = trace.candidate(category, next_observations['anchor'][slot], info)
+            captures.append((slot, candidate, workers[slot].omr_capture.remote(manager_state)))
+        started = time.monotonic()
+        payloads = ray.get([item[2] for item in captures])
+        for (slot, candidate, _), payload in zip(captures, payloads):
+            ref = self.store.put(payload)
+            history_ref = self.store.put(payload['manager'])
+            key = content_id([self.specs[slot].key, ref, history_ref, candidate['entry_fields']])
+            parent = self.controller.archive.entries.get(self.actual_ids[slot])
+            entry = StateEntry(key, self.specs[slot], candidate['category'],
+                restore_payload_ref=ref, actual_history_ref=history_ref,
+                source_rollout_id=candidate['source_rollout_id'], source_local_step=local_step,
+                source_policy_version=self.update, parent_checkpoint_id=self.actual_ids[slot],
+                prefix_action_count=len(payload['trace']),
+                restart_ancestry_depth=(parent.restart_ancestry_depth + 1 if parent else 0),
+                restore_cost_estimate=float(len(payload['trace'])),
+                root_initialization_receipt=deepcopy(self.start_infos[slot]),
+                provenance={'event_profile': 'native-progress-v1', 'source_commit': self.config.omr.source_commit},
+                **candidate.pop('entry_fields'))
+            self.controller.capture(entry)
+            candidate.update(checkpoint_id=key, payload_ref=ref)
+        self.compute['capture_seconds'] += time.monotonic() - started
+
+    def finish(self):
+        result = super().finish()
+        for slot, row in enumerate(self.summary):
+            row.update(start_mode='restart' if self.actual_ids[slot] else 'root', start_id=self.actual_ids[slot])
+            trace = self.traces[slot]
+            self.controller.observe(RolloutOutcome(row['trajectory_id'], self.plans[slot // self.group_n].group_id,
+                self.specs[slot], self.actual_ids[slot], trace.outcomes(), frozenset(trace.categories),
+                policy_version=self.update))
+        dump_records(self.directory / (self.collection_id + '-outcomes.jsonl.gz'),
+                     [dict(row, event_results=trace.outcomes(), discovered_categories=sorted(trace.categories))
+                      for row, trace in zip(self.summary, self.traces)])
+        return result
+
+    def commit(self, update):
+        transaction = self.controller.commit(update)
+        for task_id, values in self.new_thresholds.items():
+            self.thresholds[task_id] = sorted(set(self.thresholds.get(task_id, [])) | values)
+        if self.benchmark == 'scienceworld':
+            for entry in self.controller.archive.entries.values():
+                entry.event_ids = tuple(score_event(value) for value in self.thresholds.get(entry.task.instance_id, [])
+                                        if value > entry.initial_score) + ('Goal',)
+        dump_records(self.directory / (self.collection_id + '-candidates.jsonl.gz'), self.candidates)
+        atomic_json(self.directory / (self.collection_id + '-commit.json'),
+                    dict(transaction, committed_update=update, thresholds=self.thresholds))
+        dump_records(self.directory / (self.collection_id + '-statistics.jsonl.gz'),
+                     [{'entry': entry.to_dict(), 'view': self.controller.statistics.view(
+                         key, entry.event_ids, update)} for key, entry in sorted(self.controller.archive.entries.items())])
+        start_views = {}
+        for key, spec, trace in zip(self.actual_ids, self.specs, self.traces):
+            identity = key or 'root:' + spec.key
+            start_views[identity] = {'start_id': identity, 'events_at_collection': trace.events,
+                'view': self.controller.statistics.view(identity, trace.events, update)}
+        dump_records(self.directory / (self.collection_id + '-start-statistics.jsonl.gz'), start_views.values())
+        roots = self.active_refs()
+        self.store.garbage_collect(roots, self.latest_payload_refs)
+        entries = list(self.controller.archive.entries.values())
+        return {'archive/entries': len(entries), 'archive/untried': sum(e.untried for e in entries),
+                'archive/task_coverage': len({e.task.key for e in entries}),
+                'archive/candidates': len(self.candidates),
+                'archive/admitted': sum(row['admitted'] for row in transaction['admissions']),
+                'archive/context_unusable': sum(row.get('rejection') == 'context_unusable' for row in self.candidates),
+                'archive/right_censored_untried': sum(e.untried for e in entries)
+                    if update == self.config.trainer.total_training_steps else 0,
+                'sampler/requested_restart_groups': sum(plan.checkpoint_id is not None for plan in self.plans),
+                'sampler/actual_restart_groups': sum(key is not None for key in self.actual_ids) / self.group_n,
+                'sampler/restore_failed_groups': self.compute['restore_failed_groups'],
+                'sampler/discovery_rate': sum(transaction['discovery'].values()) / len(transaction['discovery'])}
+
+    def active_refs(self):
+        return {ref for entry in self.controller.archive.entries.values()
+                for ref in (entry.restore_payload_ref, entry.actual_history_ref)}
+
+    def state_dict(self):
+        return {'schema': 1, 'controller': self.controller.state_dict(), 'thresholds': self.thresholds,
+                'payload_refs': sorted(self.store.dependency_closure(self.active_refs()))}
+
+    def load_state_dict(self, state):
+        if state['schema'] != 1:
+            raise ValueError('Unsupported Full OMR checkpoint schema')
+        self.store.dependency_closure(state['payload_refs'])
+        self.controller = ReuseController.from_state_dict(state['controller'])
+        self.thresholds = deepcopy(state['thresholds'])
+        if set(state['payload_refs']) != self.store.dependency_closure(self.active_refs()):
+            raise ValueError('Checkpoint restore payload manifest differs from the archive')
+        self.latest_payload_refs = set(state['payload_refs'])
+
+    def checkpoint_committed(self):
+        self.latest_payload_refs = self.store.dependency_closure(self.active_refs())
+        self.store.garbage_collect(self.active_refs(), self.latest_payload_refs)

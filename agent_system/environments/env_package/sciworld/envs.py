@@ -17,12 +17,13 @@ import ray
 import gymnasium as gym
 import numpy as np
 from copy import deepcopy
+from agent_system.milestone_reuse.native_restart import RestartWorkerMixin
 
 # -----------------------------------------------------------------------------
 # Ray remote worker actor -----------------------------------------------------
 # -----------------------------------------------------------------------------
 
-class SciWorldWorker:
+class SciWorldWorker(RestartWorkerMixin):
     """Ray remote actor that replaces the worker function.
     Each actor hosts a *ScienceWorldEnv* instance.
     """

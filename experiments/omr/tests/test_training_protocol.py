@@ -68,7 +68,8 @@ class CollectorTests(unittest.TestCase):
         path = REPO / 'agent_system/environments/env_package/sciworld/envs.py'
         tree = ast.parse(path.read_text(encoding='utf-8'))
         node = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'SciWorldWorker')
-        namespace = {'random': random}
+        from agent_system.milestone_reuse.native_restart import RestartWorkerMixin
+        namespace = {'random': random, 'RestartWorkerMixin': RestartWorkerMixin}
         exec(compile(ast.Module([node], type_ignores=[]), str(path), 'exec'), namespace)
         cls = namespace['SciWorldWorker']
         for score, expected_strict in [(25, False), (100, True)]:

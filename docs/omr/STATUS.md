@@ -1,17 +1,22 @@
 # Execution status — 2026-10-18
 
 The user requested direct progress into training, without more standalone
-preflight/continuation jobs. **The three baseline training entry points are now
-implemented.** Full OMR remains under integration and is explicitly rejected by
-the baseline launcher. No HPC optimizer update has been returned yet.
+preflight/continuation jobs. **Baseline and Full OMR training are now connected
+for all three benchmarks.** The user reports that the earlier v1 baseline array
+was submitted; its job ID and optimizer logs are still pending. No v2 job has
+been reported submitted, and no HPC optimizer update has been returned yet.
 
 See `TRAINING.md` for actual submission/resume commands. Each array element uses
-two H200 and trains one benchmark for 150 updates; all three elements may run
-concurrently (six H200 total), subject to Slurm allocation, and fail independently.
+two H200 and trains one benchmark/arm for 150 updates; all six elements may run
+concurrently (twelve H200 total), subject to Slurm allocation, and fail independently.
 Fixed instance manifests, held-out validation, final three-seed
 test, explicit same-root groups, strict ScienceWorld success, online SwanLab,
 durable records and atomic full baseline checkpoint/resume are connected to the
-existing BEACON optimizer loop. The previous continuation job is superseded.
+existing BEACON optimizer loop. Full also connects group restore/fallback,
+next-update archive admission, q/D and sampler state, and payload-safe resume.
+See `FULL_OMR.md` for native contracts and the local/native evidence boundary.
+Protocol v2 has common horizon/history/seed fixes: do not compare v1 baseline
+results against v2 full, or silently migrate checkpoints between them.
 
 ## Completed locally
 
@@ -71,7 +76,8 @@ executes the real command prefix and verifies every transition plus final sessio
 browser, detector, native RNG and manager input history. A fresh rollout receives
 15 new actions. Its local tests include recursive prefixes, independent state,
 corruption, live divergence and terminal exclusion. See `CONTINUATION_CHECKS.md`.
-These APIs are not yet connected to trainer group planning/archive admission.
+Those APIs are now connected to Full OMR group planning/archive admission;
+native training evidence for the integrated path is still pending.
 
 Earlier preparation **165860**, source `71f4083`, passed package
 installation, preserved-package checks, `pip check`, WebShop dependencies, HF
@@ -129,22 +135,22 @@ preparer. This cross-platform check excludes unchanged source-only Gym and does
 not emulate Linux dependency markers or replace native GPU-node acceptance.
 Submission scripts pass Bash syntax checking. These are not HPC acceptance results.
 
-## Remaining implementation / acceptance
+## Remaining execution / acceptance
 
-1. User submits the three baseline training jobs through Tunnel; handle any actual
-   training error per benchmark without blocking the other two.
-2. Complete native ALFWorld/ScienceWorld restart adapters and connect all three
-   adapters to group planning, admission and controller commit after optimizer updates.
-3. Extend the integrated baseline checkpoint to full archive/statistics/payload
-   dependencies and full-only scientific records. Do not relabel baseline as full.
-4. Obtain actual two-H200 optimizer, weight synchronization, resume and SwanLab
+1. Obtain the already submitted v1 baseline array ID/status. Preserve its results;
+   it is not the v2 formal comparator. Do not cancel unidentified jobs.
+2. Submit the six v2 baseline/full conditions from one frozen source revision
+   through the user's Tunnel session, independently and concurrently.
+3. Obtain actual native replay, two-H200 optimizer, weight synchronization, resume and SwanLab
    evidence from training. Local fixtures do not establish GPU execution success.
+4. Collect the six learning curves, final evaluation tables and mechanism plots.
+   Runtime failures or no improvement must be reported from measured results.
 
 | Environment | Baseline | Full | Job ID | Training updates | SwanLab URL | Latest model |
 | --- | --- | --- | --- | ---: | --- | --- |
-| ALFWorld | Not run | Not run | None | 0 | None | None |
-| ScienceWorld | Not run | Not run | None | 0 | None | None |
-| WebShop | Not run | Not run | None | 0 | None | None |
+| ALFWorld | v1 submitted (user report); v2 not submitted | v2 not submitted | Pending | Unknown for v1 | Unknown | Unknown |
+| ScienceWorld | v1 submitted (user report); v2 not submitted | v2 not submitted | Pending | Unknown for v1 | Unknown | Unknown |
+| WebShop | v1 submitted (user report); v2 not submitted | v2 not submitted | Pending | Unknown for v1 | Unknown | Unknown |
 
 There are no measured learning curves, success rates, GPU-hours, or model outputs
 yet. New-run/resume commands are in `TRAINING.md`; upstream example launchers are
@@ -157,7 +163,7 @@ python -m unittest discover -s experiments/omr/tests -v
 python -m compileall -q agent_system/milestone_reuse experiments/omr migpo
 ```
 
-Tests require NumPy/Torch for numerical BEACON fixtures; simulator/Ray imports are
+Tests require NumPy/Torch/OmegaConf for numerical and composition fixtures; simulator/Ray imports are
 not required. The inventory is standard-library-only and runs on the GPU node.
 
 After the continuation changes, the complete local suite ran 62 tests: 61 passed
@@ -171,3 +177,11 @@ native terminal freezing, strict/reference ScienceWorld separation, evaluation
 tail denominators, and the production checkpoint subclass with simulated rank
 failure plus Python/NumPy/Torch/dataloader state recovery. Training submission
 scripts pass Bash parsing. These fixtures do not simulate a native GPU update.
+
+After Full OMR integration, **89 local tests ran: 88 passed and the Windows
+symlink fixture was skipped**. New coverage exercises all three native-interface
+restart paths, the production full observer and manager, next-update admission,
+whole-group fallback/quarantine, dynamic event denominators, prefix exclusion,
+full archive/model checkpoint rollback, WebShop history preservation, and native
+worker policy/weight-sync receipt guards. Both training scripts passed Bash syntax
+checks. No Full OMR GPU execution or final experimental result is claimed.

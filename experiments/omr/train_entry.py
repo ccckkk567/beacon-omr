@@ -15,11 +15,14 @@ def compose_config(payload):
     from omegaconf import OmegaConf
     repo = Path(__file__).resolve().parents[2]
     profiles = repo / 'experiments/omr/configs'
+    method = payload.get('method', 'baseline')
+    if method not in ('baseline', 'full'):
+        raise ValueError('Unsupported experiment arm')
     config = OmegaConf.merge(OmegaConf.load(repo / 'verl/trainer/config/ppo_trainer.yaml'),
         OmegaConf.load(profiles / 'common.yaml'), OmegaConf.load(profiles / (payload['benchmark'] + '.yaml')),
-        OmegaConf.load(profiles / 'baseline.yaml'))
+        OmegaConf.load(profiles / (method + '.yaml')))
     protocol_signature = digest([OmegaConf.to_container(config, resolve=True), payload['model'],
-                                 payload['source_commit'], 'root-protocol-v1'])
+                                 payload['source_commit'], 'omr-protocol-v2'])
     config.actor_rollout_ref.model.path = payload['model']['path']
     config.data.shuffle = False
     config.data.seed = 0
@@ -34,7 +37,7 @@ def compose_config(payload):
     if payload['benchmark'] == 'webshop':
         for key, value in payload['webshop']['paths'].items():
             config.env.webshop[key] = value
-    config.omr.update({'protocol': True, 'benchmark': payload['benchmark'],
+    config.omr.update({'protocol': True, 'benchmark': payload['benchmark'], 'method': method,
         'logical_run_id': payload['run_id'], 'run_dir': payload['run_dir'],
         'attempt_dir': payload['attempt_dir'], 'source_commit': payload['source_commit'],
         'protocol_signature': protocol_signature,

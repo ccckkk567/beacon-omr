@@ -23,7 +23,10 @@ from agent_system.milestone_reuse.identity import webshop_goal_id
 # Ray remote worker actor -----------------------------------------------------
 # -----------------------------------------------------------------------------
 
-class WebshopWorker:
+from agent_system.milestone_reuse.native_restart import RestartWorkerMixin
+
+
+class WebshopWorker(RestartWorkerMixin):
     """Ray remote actor that replaces the worker function.
     Each actor hosts a *WebAgentTextEnv* instance.
     """

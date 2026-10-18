@@ -42,22 +42,27 @@ class RolloutSlots(Dataset):
 class ProtocolTrainer(RayPPOTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.config.omr.enabled:
-            raise NotImplementedError('Full OMR collection/restore is not connected; refusing a mislabeled full run')
         self.run_dir = Path(self.config.omr.run_dir)
         self.attempt = Path(self.config.omr.attempt_dir)
         self.manifest = build_catalog(self.config.omr.benchmark, self.envs.envs, self.val_envs.envs)
         path = Path(self.config.omr.manifest_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
-            if json.loads(path.read_text()) != self.manifest:
-                raise ValueError('Task catalog changed since the shared manifest was frozen')
-        else:
-            atomic_json(path, self.manifest)
+        import fcntl
+        with path.with_suffix('.lock').open('a+') as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            if path.exists():
+                if json.loads(path.read_text()) != self.manifest:
+                    raise ValueError('Task catalog changed since the shared manifest was frozen')
+            else:
+                atomic_json(path, self.manifest)
         self.schedule = training_schedule(self.manifest, self.config.omr.benchmark)
         self.signature = digest([self.config.omr.protocol_signature, self.manifest['sha256'], self.schedule])
         self.checkpoints = LatestCheckpoint(self.config.trainer.default_local_dir, self.config.omr.logical_run_id)
         self.train_observer = RootCollectorObserver(self.config, self.envs, self.manifest, self.attempt / 'rollouts')
+        if self.config.omr.enabled:
+            from .full_protocol import FullCollectorObserver
+            self.train_observer = FullCollectorObserver(self.config, self.envs, self.manifest,
+                                                         self.attempt / 'rollouts', self.tokenizer)
         self.eval_observer = RootCollectorObserver(self.config, self.val_envs, self.manifest, self.attempt / 'rollouts')
         self.envs.omr_observer = self.train_observer
         self.val_envs.omr_observer = self.eval_observer
@@ -81,6 +86,9 @@ class ProtocolTrainer(RayPPOTrainer):
             row = {key: batch.non_tensor_batch[key][i] for key in
                    ('analysis_step_id', 'origin_step_id', 'task_id', 'uid', 'traj_uid', 'local_step', 'actions')}
             row['policy_update'] = self.global_steps
+            for key in ('start_id', 'start_mode', 'initial_milestone_index'):
+                if key in batch.non_tensor_batch:
+                    row[key] = batch.non_tensor_batch[key][i]
             for key in ('segment_id', 'milestone_phase', 'milestone_achieved', 'subgoal_completed',
                         'score_pre', 'score_post', 'is_action_valid'):
                 if key in batch.non_tensor_batch:
@@ -102,11 +110,22 @@ class ProtocolTrainer(RayPPOTrainer):
         for key, value in self.train_observer.compute.items():
             self.cost[key] += value
         metrics.update({'cost/cumulative_' + key: value for key, value in self.cost.items()})
-        metrics.update(summarize(self.train_observer.summary, 'train/root'))
-        metrics['signal/root/joint_adv_nonzero_rate'] = sum(
-            row['advantages']['nonzero_count'] > 0 for row in rows) / len(rows)
-        metrics['signal/root/traj_adv_abs_mean'] = np.mean([row['trajectory_advantages']['abs_mean'] for row in rows])
-        metrics['signal/root/segment_adv_abs_mean'] = np.mean([row['segment_advantages']['abs_mean'] for row in rows])
+        for mode in ('root', 'restart'):
+            episodes = [row for row in self.train_observer.summary if row.get('start_mode', 'root') == mode]
+            signals = [row for row in rows if row.get('start_mode', 'root') == mode]
+            if episodes:
+                outcome_metrics = summarize(episodes, 'train/' + mode)
+                if mode == 'restart' and 'train/restart/root_success_rate' in outcome_metrics:
+                    outcome_metrics['train/restart/conditional_success_rate'] = outcome_metrics.pop(
+                        'train/restart/root_success_rate')
+                metrics.update(outcome_metrics)
+            if signals:
+                metrics[f'signal/{mode}/joint_adv_nonzero_rate'] = sum(
+                    row['advantages']['nonzero_count'] > 0 for row in signals) / len(signals)
+                metrics[f'signal/{mode}/traj_adv_abs_mean'] = np.mean([row['trajectory_advantages']['abs_mean'] for row in signals])
+                metrics[f'signal/{mode}/segment_adv_abs_mean'] = np.mean([row['segment_advantages']['abs_mean'] for row in signals])
+        if self.config.omr.enabled:
+            metrics.update(self.train_observer.commit(self.global_steps))
         atomic_json(self.run_dir / 'progress.json', {'policy_update': self.global_steps,
             'status': 'training', 'attempt': str(self.attempt), 'cost': self.cost,
             'manifest_sha256': self.manifest['sha256']})
@@ -167,6 +186,12 @@ class ProtocolTrainer(RayPPOTrainer):
                  'python_rng': random.getstate(), 'numpy_rng': np.random.get_state(),
                  'torch_rng': torch.get_rng_state(), 'monitor': None if swan is None else swan.status,
                  'attempt': str(self.attempt), 'generation_rng': 'request seeds derived from frozen task/update/slot/step'}
+        observer = getattr(self, 'train_observer', None)
+        if observer is not None and hasattr(observer, 'state_dict'):
+            state['archive_enabled'] = True
+            state['omr'] = observer.state_dict()
+            if state['omr']['controller']['committed_update'] != self.global_steps:
+                raise ValueError('OMR state and model update are not aligned')
         state['ledger_watermark'] = {str(path.relative_to(self.run_dir)): file_sha256(path)
                                     for path in sorted((self.run_dir / 'cost-ledger').glob('*/*.json'))}
 
@@ -175,6 +200,7 @@ class ProtocolTrainer(RayPPOTrainer):
                                                  self.global_steps, max_ckpt_to_keep=None)
             torch.save(self.train_dataloader.state_dict(), directory / 'data.pt')
             torch.save(state, directory / 'protocol.pt')
+            atomic_json(directory / 'omr-policy.json', {'policy_version': self.global_steps})
 
         def validate(directory):
             for rank in range(self.actor_rollout_wg.world_size):
@@ -189,6 +215,8 @@ class ProtocolTrainer(RayPPOTrainer):
             {'signature': self.signature, 'source_commit': self.config.omr.source_commit,
              'manifest_sha256': self.manifest['sha256']}, required_free_bytes=24 * 1024 ** 3)
         self.last_saved = self.global_steps
+        if state['archive_enabled']:
+            observer.checkpoint_committed()
 
     def _load_checkpoint(self):
         from omegaconf import open_dict
@@ -199,6 +227,14 @@ class ProtocolTrainer(RayPPOTrainer):
         state = torch.load(directory / 'protocol.pt', map_location='cpu', weights_only=False)
         if state['signature'] != self.signature or state['task_cursor'] != complete['update']:
             raise ValueError('Checkpoint protocol/manifest/task cursor mismatch')
+        observer = getattr(self, 'train_observer', None)
+        archive_enabled = observer is not None and hasattr(observer, 'load_state_dict')
+        if bool(state['archive_enabled']) != archive_enabled:
+            raise ValueError('Checkpoint experiment arm differs')
+        if archive_enabled:
+            observer.load_state_dict(state['omr'])
+            if observer.controller.committed_update != state['update']:
+                raise ValueError('Restored OMR state is not aligned with model update')
         for name, expected in state['ledger_watermark'].items():
             path = self.run_dir / name
             if not path.resolve().is_relative_to(self.run_dir.resolve()) or file_sha256(path) != expected:

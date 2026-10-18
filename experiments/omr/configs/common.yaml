@@ -1,4 +1,4 @@
-# Frozen protocol; baseline training is wired through experiments.omr.train_entry.
+# Frozen common protocol; both arms use experiments.omr.train_entry.
 algorithm:
   adv_estimator: migpo
   gamma: 0.95
