@@ -23,6 +23,7 @@ from agent_system.environments.prompts import *
 from agent_system.environments.base import EnvironmentManagerBase, to_numpy
 from agent_system.memory import SimpleMemory, SearchMemory
 from omegaconf import OmegaConf
+from agent_system.milestone_reuse.identity import alfworld_trial_id
 
 def parse_gamefile(infos):
     gamefile = []
@@ -138,6 +139,8 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
     def reset(self, kwargs):
         text_obs, image_obs, infos = self.envs.reset()
         self.gamefile = parse_gamefile(infos)
+        for info, gamefile in zip(infos, self.gamefile):
+            info['trial_id'] = alfworld_trial_id(gamefile)
         # initialize the history buffer
         self.memory.reset(batch_size = len(text_obs))
         self.tasks = []
@@ -160,6 +163,8 @@ class AlfWorldEnvironmentManager(EnvironmentManagerBase):
         # add action_valid to infos
         for i, info in enumerate(infos):
             info['is_action_valid'] = to_numpy(valids[i])
+            info['executed_action'] = actions[i]
+            info['trial_id'] = alfworld_trial_id(self.gamefile[i])
 
         next_observations = {'text': full_text_obs, 'image': image_obs, 'anchor': text_obs}
         rewards = to_numpy(rewards)

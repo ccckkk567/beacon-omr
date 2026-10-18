@@ -21,6 +21,8 @@ next_state, info)` tuples and reports milestone completion events in order.
 from __future__ import annotations
 
 import json
+import os
+import uuid
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -90,10 +92,10 @@ class MilestoneDetector:
         self.goal_option_values = self._normalize_goal_options(goal.get("goal_options"))
 
         # 日志配置 - 默认启用
-        default_log_dir = "logs/milestone_debug"
+        default_log_dir = os.environ.get("OMR_DETECTOR_LOG_DIR", "logs/milestone_debug")
         self.log_dir = Path(log_dir) if log_dir is not None else Path(default_log_dir)
         self.step_count = 0
-        self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.session_id = f"{os.getpid()}-{uuid.uuid4().hex}"
         self.log_file = None
         self.action_history = []
 

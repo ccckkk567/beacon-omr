@@ -352,12 +352,22 @@ class TrajectoryCollector:
             batch.non_tensor_batch['uid'] = uid_batch
             batch.non_tensor_batch['traj_uid'] = traj_uid
             batch.non_tensor_batch['trial_id'] = trial_id_batch
+            batch.non_tensor_batch['local_step'] = np.full(batch_size, _step, dtype=np.int64)
+            step_ids = np.array([f'{uid}:{_step}' for uid in traj_uid], dtype=object)
+            batch.non_tensor_batch['analysis_step_id'] = step_ids
+            batch.non_tensor_batch['origin_step_id'] = step_ids.copy()
+            batch.non_tensor_batch['is_padding_copy'] = np.zeros(batch_size, dtype=bool)
 
             batch = batch.union(batch_output)
             
             text_actions = self.tokenizer.batch_decode(batch.batch['responses'], skip_special_tokens=True)
             
             next_obs, rewards, dones, infos = envs.step(text_actions)
+            batch.non_tensor_batch['raw_response'] = np.array(text_actions, dtype=object)
+            if all('executed_action' in info for info in infos):
+                batch.non_tensor_batch['actions'] = np.array([info['executed_action'] for info in infos], dtype=object)
+            elif self.config.algorithm.adv_estimator == 'migpo':
+                raise ValueError('MiGPO requires actual executed_action receipts for every worker')
 
 
             if len(rewards.shape) == 2:
@@ -375,6 +385,12 @@ class TrajectoryCollector:
             if 'milestone_phase' in infos[0]:
                 batch.non_tensor_batch['milestone_phase'] = np.array([info.get('milestone_phase', -1) for info in infos], dtype=np.int32)
                 batch.non_tensor_batch['milestone_achieved'] = np.array([info.get('milestone_achieved', False) for info in infos], dtype=bool)
+            if any('subgoal_completed' in info for info in infos):
+                if not all('subgoal_completed' in info for info in infos):
+                    raise ValueError('ScienceWorld milestone field missing from a worker')
+                batch.non_tensor_batch['subgoal_completed'] = np.array([info['subgoal_completed'] for info in infos], dtype=bool)
+                for field in ('score_pre', 'score_post'):
+                    batch.non_tensor_batch[field] = np.array([info[field] for info in infos], dtype=float)
 
             if 'tool_calling' in infos[0]:
                 tool_callings[active_masks] += np.array([info['tool_calling'] for info in infos], dtype=np.float32)[active_masks]

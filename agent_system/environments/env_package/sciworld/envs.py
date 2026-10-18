@@ -16,6 +16,7 @@
 import ray
 import gym
 import numpy as np
+from copy import deepcopy
 
 # -----------------------------------------------------------------------------
 # Ray remote worker actor -----------------------------------------------------
@@ -80,6 +81,9 @@ class SciWorldWorker:
 
         # 获取当前分数
         current_score = info.get('score', 0.0)
+        info['score_pre'] = self.prev_score
+        info['score_post'] = current_score
+        info['executed_action'] = action
         info['score'] = current_score
         info['task_score'] = current_score
 
@@ -149,10 +153,16 @@ class SciWorldWorker:
         info['task_num'] = task_id
 
         # 初始化prev_score用于子目标检测
-        self.prev_score = 0.0
         info['score'] = info.get('score', 0.0)
+        self.prev_score = info['score']
         info['task_score'] = info['score']
         info['subgoal_completed'] = False
+        info['task_variation'] = task_variation
+        info['task_name'] = taskName
+        info['initialization_receipt'] = {
+            'task_id': task_id, 'task_name': taskName, 'variation': task_variation,
+            'simplifications': simplification_str,
+        }
 
         return obs, info
 
@@ -194,7 +204,7 @@ class SciWorldMultiProcessEnv(gym.Env):
         if not is_train: assert group_n == 1
 
         self._rng = np.random.RandomState(seed)
-        self._env_kwargs = env_kwargs if env_kwargs is not None else {}
+        self._env_kwargs = deepcopy(env_kwargs) if env_kwargs is not None else {}
 
         # Set up variation indices for train/val split BEFORE creating workers
         variations_idx = self._env_kwargs.get('variations_idx', {})

@@ -16,6 +16,8 @@
 import ray
 import gym
 import numpy as np
+from copy import deepcopy
+from agent_system.milestone_reuse.identity import webshop_goal_id
 
 # -----------------------------------------------------------------------------
 # Ray remote worker actor -----------------------------------------------------
@@ -30,12 +32,23 @@ class WebshopWorker:
         # Lazy import avoids CUDA initialisation issues
         import sys
         import os
+        import random
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), 'webshop'))
         sys.path.append(project_root)
         from web_agent_site.envs import WebAgentTextEnv  # noqa: WPS433 (runtime import)
 
-        env_kwargs['seed'] = seed
-        self.env = gym.make('WebAgentTextEnv-v0', **env_kwargs)
+        env_kwargs = deepcopy(env_kwargs)
+        # The goal permutation defines train/test membership. It must not vary
+        # with the seed of a worker, group, or validation actor.
+        env_kwargs['seed'] = env_kwargs.pop('goal_manifest_seed', 0)
+        previous_rng = random.getstate()
+        try:
+            # Products/prices/goals themselves consume randomness before the
+            # simulator shuffles goals. Seed the complete manifest construction.
+            random.seed(env_kwargs['seed'])
+            self.env = gym.make('WebAgentTextEnv-v0', **env_kwargs)
+        finally:
+            random.setstate(previous_rng)
 
         # MIGPO: 里程碑检测器相关
         self.milestone_detector = None
@@ -47,6 +60,8 @@ class WebshopWorker:
         info = dict(info or {})  # make a *copy* so we can mutate safely
         info['available_actions'] = self.env.get_available_actions()
         info['task_score'] = reward
+        info['executed_action'] = action
+        info['goal_id'] = self.goal_id
 
         # MIGPO: 里程碑检测
         if self.milestone_detector is not None:
@@ -88,6 +103,9 @@ class WebshopWorker:
         from migpo.webshop_milestone_detector import MilestoneDetector
         session_id = self.env.session
         goal_data = self.env.server.user_sessions[session_id]['goal']
+        self.goal_id = webshop_goal_id(goal_data)
+        info['goal_id'] = self.goal_id
+        info['goal_index'] = idx
         self.milestone_detector = MilestoneDetector(
             goal_data,
             self.env.server.product_item_dict,

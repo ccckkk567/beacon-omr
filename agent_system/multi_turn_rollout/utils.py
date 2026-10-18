@@ -95,11 +95,17 @@ def adjust_batch(config, data: DataProto, mode="copy") -> DataProto:
 
     # check if the batch size is divisible by the dp size, if not, delete the last few samples to make it divisible
     bs = len(data)
+    if bs == 0:
+        raise ValueError('Cannot train on an empty rollout batch')
+    if 'is_padding_copy' not in data.non_tensor_batch:
+        data.non_tensor_batch['is_padding_copy'] = np.zeros(bs, dtype=bool)
     remainder = bs % size_divisor
     if remainder == 0:
         return data
     
     if mode == "delete":
+        if config.algorithm.adv_estimator == 'migpo':
+            raise ValueError('MiGPO cannot drop real steps for hardware divisibility')
         # Generate indices to remove, rather than indices to keep
         remove_indices = np.random.choice(bs, remainder, replace=False)
         # Sort remove_indices to maintain stability when deleting
@@ -117,8 +123,10 @@ def adjust_batch(config, data: DataProto, mode="copy") -> DataProto:
         del data
     elif mode == "copy":
         to_add = size_divisor - remainder
-        dup_indices = np.random.choice(bs, to_add, replace=False)
+        # Padding must neither consume task/restart RNG nor fail for tiny fixtures.
+        dup_indices = np.arange(to_add) % bs
         dup_proto = data.select_idxs(dup_indices)
+        dup_proto.non_tensor_batch['is_padding_copy'] = np.ones(to_add, dtype=bool)
 
         adjusted_batch = DataProto.concat([data, dup_proto])
     else:

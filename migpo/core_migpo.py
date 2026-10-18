@@ -21,15 +21,30 @@ MiGPO extends GiGPO by introducing milestone-based reward shaping:
 3. Advantage computation grouped by milestone index
 """
 
+from __future__ import annotations
+
 import numpy as np
 import torch
 from collections import defaultdict
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, TYPE_CHECKING
 import uuid
 
 from difflib import SequenceMatcher
 
-from verl import DataProto
+if TYPE_CHECKING:
+    from verl import DataProto
+
+
+def chronological_indices(traj_uid, target, local_step=None, is_padding_copy=None):
+    indices = np.where(traj_uid == target)[0]
+    if is_padding_copy is not None:
+        indices = indices[~np.asarray(is_padding_copy, dtype=bool)[indices]]
+    if local_step is not None:
+        steps = np.asarray(local_step)[indices]
+        if len(set(steps.tolist())) != len(steps):
+            raise ValueError('Duplicate real local_step in a trajectory')
+        indices = indices[np.argsort(steps, kind='stable')]
+    return indices
 
 
 # ---------------------------------------------------------- #
@@ -69,6 +84,7 @@ def compute_migpo_step_rewards(batch: DataProto,
 
     bsz = len(batch)
     all_step_rewards = np.zeros(bsz, dtype=np.float32)
+    all_segment_ids = np.zeros(bsz, dtype=np.int32)
 
     if actions is None or trial_ids is None:
         return torch.zeros(bsz, device=batch.batch['input_ids'].device)
@@ -76,7 +92,9 @@ def compute_migpo_step_rewards(batch: DataProto,
     unique_traj_uids = np.unique(traj_uids)
 
     for uid in unique_traj_uids:
-        traj_indices = np.where(traj_uids == uid)[0]
+        traj_indices = chronological_indices(traj_uids, uid, batch.non_tensor_batch.get('local_step'), batch.non_tensor_batch.get('is_padding_copy'))
+        if not len(traj_indices):
+            continue
         traj_trial_id = trial_ids[traj_indices[0]]
         milestones = loader.get_milestones(traj_trial_id)
 
@@ -84,8 +102,11 @@ def compute_migpo_step_rewards(batch: DataProto,
             continue
 
         traj_actions = [actions[i] for i in traj_indices]
-        match_indices = match_milestones(traj_actions, milestones, threshold)
-        rewards, _ = compute_segment_rewards(len(traj_actions), match_indices, gamma)
+        offsets = batch.non_tensor_batch.get('initial_milestone_index')
+        offset = int(offsets[traj_indices[0]]) if offsets is not None else 0
+        match_indices = match_milestones(traj_actions, milestones, threshold, initial_milestone_index=offset)
+        rewards, segments = compute_segment_rewards(len(traj_actions), match_indices, gamma)
+        all_segment_ids[traj_indices] = np.where(segments >= 0, segments + offset, segments)
 
         # Scale by 10x to match GiGPO's [0, 10] scale
         rewards = rewards * 10.0
@@ -93,6 +114,7 @@ def compute_migpo_step_rewards(batch: DataProto,
         for local_idx, global_idx in enumerate(traj_indices):
             all_step_rewards[global_idx] = rewards[local_idx]
 
+    batch.non_tensor_batch['segment_id'] = all_segment_ids
     return torch.tensor(all_step_rewards, dtype=torch.float32,
                         device=batch.batch['input_ids'].device)
 
@@ -189,7 +211,8 @@ def episode_norm_reward(token_level_rewards: torch.Tensor,
 
 def match_milestones(actions: List[str],
                      milestones: List[str],
-                     threshold: float = 0.85) -> List[int]:
+                     threshold: float = 0.85,
+                     initial_milestone_index: int = 0) -> List[int]:
     """
     Sequentially match trajectory actions with milestone sequence.
 
@@ -205,7 +228,10 @@ def match_milestones(actions: List[str],
         match_indices: List of action indices for each milestone.
                       -1 indicates the milestone was not matched.
     """
-    k = 0  # Current milestone pointer
+    if not 0 <= initial_milestone_index <= len(milestones):
+        raise ValueError('Invalid initial milestone offset')
+    milestones = milestones[initial_milestone_index:]
+    k = 0  # Pointer into the remaining events, never re-award the prefix.
     match_indices = []
 
     for t, action in enumerate(actions):
@@ -381,6 +407,11 @@ def compute_migpo_advantage(token_level_rewards: torch.Tensor,
                             step_advantage_w: float = 1.0,
                             mode: str = "mean_norm",
                             milestone_achieved: Optional[np.ndarray] = None,
+                            segment_ids: Optional[np.ndarray] = None,
+                            local_steps: Optional[np.ndarray] = None,
+                            is_padding_copy: Optional[np.ndarray] = None,
+                            initial_milestone_index: Optional[np.ndarray] = None,
+                            return_components: bool = False,
                             ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Compute advantages for MiGPO (Milestone-Guided Policy Optimization).
@@ -410,6 +441,20 @@ def compute_migpo_advantage(token_level_rewards: torch.Tensor,
         advantages: Tensor of shape (bs, response_length).
         returns: Tensor of shape (bs, response_length) (same as advantages).
     """
+    if is_padding_copy is not None and np.any(is_padding_copy):
+        valid = np.where(~np.asarray(is_padding_copy, dtype=bool))[0]
+        select = lambda value: None if value is None else value[valid]
+        result = compute_migpo_advantage(
+            token_level_rewards[valid], step_rewards[valid], response_mask[valid],
+            select(actions), index[valid], traj_uid[valid], select(trial_id),
+            gamma, threshold, epsilon, step_advantage_w, mode, select(milestone_achieved),
+            select(segment_ids), select(local_steps), None, select(initial_milestone_index), return_components)
+        expanded = []
+        for value in result:
+            output = torch.zeros_like(token_level_rewards)
+            output[valid] = value
+            expanded.append(output)
+        return tuple(expanded)
     # Determine normalization mode
     if mode == "mean_std_norm":
         remove_std = False
@@ -430,9 +475,11 @@ def compute_migpo_advantage(token_level_rewards: torch.Tensor,
     # 2. Compute step-level advantages using pre-computed step_rewards
     # Auto-detect environment type and build segment groups accordingly
 
-    if milestone_achieved is not None:
+    if segment_ids is not None and (milestone_achieved is not None or (trial_id is not None and any(t is not None for t in trial_id))):
+        group_uids = build_segment_groups(segment_ids, index)
+    elif milestone_achieved is not None:
         # WebShop: Use dynamic milestone detection
-        group_uids = build_segment_groups_dynamic(milestone_achieved, index, traj_uid)
+        group_uids = build_segment_groups_dynamic(milestone_achieved, index, traj_uid, local_steps)
     elif trial_id is not None and trial_id[0] is not None:
         # ALFWorld: Use static milestone matching
         from .milestone_loader import get_milestone_loader
@@ -445,7 +492,7 @@ def compute_migpo_advantage(token_level_rewards: torch.Tensor,
         unique_traj_uids = np.unique(traj_uid)
 
         for uid in unique_traj_uids:
-            traj_indices = np.where(traj_uid == uid)[0]
+            traj_indices = chronological_indices(traj_uid, uid, local_steps)
             traj_trial_id = trial_id[traj_indices[0]]
             milestones = loader.get_milestones(traj_trial_id) if traj_trial_id else None
 
@@ -455,17 +502,21 @@ def compute_migpo_advantage(token_level_rewards: torch.Tensor,
                 continue
 
             traj_actions = [actions[i] for i in traj_indices]
-            match_indices = match_milestones(traj_actions, milestones, threshold)
+            offset = int(initial_milestone_index[traj_indices[0]]) if initial_milestone_index is not None else 0
+            match_indices = match_milestones(traj_actions, milestones, threshold, offset)
             _, segment_ids = compute_segment_rewards(len(traj_actions), match_indices, gamma)
 
             for local_idx, global_idx in enumerate(traj_indices):
-                all_segment_ids[global_idx] = segment_ids[local_idx]
+                segment = segment_ids[local_idx]
+                all_segment_ids[global_idx] = segment + offset if segment >= 0 else segment
 
         # Build segment groups for advantage computation
         group_uids = build_segment_groups(all_segment_ids, index)
     else:
         # No milestone data available, use only episode-level advantages
         print("[MiGPO Warning] No milestone data (trial_id or milestone_achieved) provided, using only episode-level advantages.")
+        if return_components:
+            return episode_advantages, episode_advantages, episode_advantages, torch.zeros_like(episode_advantages)
         return episode_advantages, episode_advantages
 
     # Compute segment-level advantages using pre-computed step_rewards
@@ -476,6 +527,8 @@ def compute_migpo_advantage(token_level_rewards: torch.Tensor,
     # 3. Compute joint advantages (identical to GiGPO)
     scores = episode_advantages + step_advantage_w * step_advantages
 
+    if return_components:
+        return scores, scores, episode_advantages, step_advantages
     return scores, scores
 
 
@@ -509,6 +562,7 @@ def compute_migpo_step_rewards_dynamic(
     device = batch.batch['responses'].device
     total_tokens = batch.batch['responses'].shape[0]
     step_rewards = torch.zeros(total_tokens, dtype=torch.float32, device=device)
+    segment_ids = np.zeros(total_tokens, dtype=np.int32)
 
     # Support both milestone_achieved (WebShop) and subgoal_completed (SciWorld)
     if 'milestone_achieved' in batch.non_tensor_batch:
@@ -521,13 +575,18 @@ def compute_migpo_step_rewards_dynamic(
 
     for traj_uid in np.unique(traj_uids):
         traj_mask = (traj_uids == traj_uid)
-        traj_indices = np.where(traj_mask)[0]
+        traj_indices = chronological_indices(traj_uids, traj_uid, batch.non_tensor_batch.get('local_step'), batch.non_tensor_batch.get('is_padding_copy'))
 
         if len(traj_indices) == 0:
             continue
 
         # 找到达成里程碑的步骤（等价于 ALFWorld 的匹配结果）
         traj_achieved = [milestone_achieved[i] for i in traj_indices]
+        offset = batch.non_tensor_batch.get('initial_milestone_index')
+        current_segment = int(offset[traj_indices[0]]) if offset is not None else 0
+        for position, achieved in zip(traj_indices, traj_achieved):
+            segment_ids[position] = current_segment
+            current_segment += int(achieved)
         milestone_steps = [i for i, achieved in enumerate(traj_achieved) if achieved]
 
         if not milestone_steps:
@@ -542,6 +601,7 @@ def compute_migpo_step_rewards_dynamic(
                 step_rewards[traj_indices[step_idx]] = reward_value
             segment_start = milestone_idx + 1
 
+    batch.non_tensor_batch['segment_id'] = segment_ids
     return step_rewards
 
 
@@ -549,6 +609,7 @@ def build_segment_groups_dynamic(
     milestone_achieved: np.ndarray,
     index: np.ndarray,
     traj_uid: np.ndarray,
+    local_steps: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
     为 WebShop 构建段分组（与 ALFWorld 的 build_segment_groups 逻辑相同）
@@ -563,6 +624,14 @@ def build_segment_groups_dynamic(
     Returns:
         group_uids: 每个步骤的分组 UID
     """
+    if local_steps is not None:
+        segments = np.zeros(len(traj_uid), dtype=np.int32)
+        for uid in np.unique(traj_uid):
+            segment = 0
+            for position in chronological_indices(traj_uid, uid, local_steps):
+                segments[position] = segment
+                segment += int(milestone_achieved[position])
+        return build_segment_groups(segments, index)
     group_uids = np.empty(len(milestone_achieved), dtype=object)
 
     # 为每个步骤计算其所属的里程碑段
