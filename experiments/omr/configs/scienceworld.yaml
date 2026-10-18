@@ -1,0 +1,17 @@
+env:
+  env_name: SciWorld
+  max_steps: 30
+  history_length: 999999
+algorithm:
+  migpo:
+    gamma: 0.95
+    step_advantage_w: 1.0
+    mode: mean_norm
+    threshold: 0.95
+actor_rollout_ref:
+  actor:
+    ppo_mini_batch_size: 256
+    use_invalid_action_penalty: true
+    invalid_action_penalty_coef: 0.1
+  rollout:
+    gpu_memory_utilization: 0.65

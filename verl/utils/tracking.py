@@ -47,6 +47,7 @@ class Tracking:
                 assert backend in self.supported_backend, f"{backend} is not supported"
 
         self.logger = {}
+        self._finished = False
 
         if "tracking" in default_backend or "wandb" in default_backend:
             import wandb
@@ -71,26 +72,10 @@ class Tracking:
             self.logger["mlflow"] = _MlflowLoggingAdapter()
 
         if "swanlab" in default_backend:
-            import os
-
-            import swanlab
-
-            SWANLAB_API_KEY = os.environ.get("SWANLAB_API_KEY", None)
-            SWANLAB_LOG_DIR = os.environ.get("SWANLAB_LOG_DIR", "swanlog")
-            SWANLAB_MODE = os.environ.get("SWANLAB_MODE", "cloud")
-            if SWANLAB_API_KEY:
-                swanlab.login(SWANLAB_API_KEY)  # NOTE: previous login information will be overwritten
-
-            if config is None:
-                config = {}  # make sure config is not None, otherwise **config will raise error
-            swanlab.init(
-                project=project_name,
-                experiment_name=experiment_name,
-                config={"FRAMEWORK": "verl", **config},
-                logdir=SWANLAB_LOG_DIR,
-                mode=SWANLAB_MODE,
-            )
-            self.logger["swanlab"] = swanlab
+            from experiments.omr.monitoring import SwanLabMonitor
+            resolved = config or {}
+            options = resolved.get('omr', {}).get('tracking', {})
+            self.logger['swanlab'] = SwanLabMonitor(project_name, experiment_name, resolved, options)
 
         if "vemlp_wandb" in default_backend:
             import os
@@ -129,18 +114,25 @@ class Tracking:
             if backend is None or default_backend in backend:
                 logger_instance.log(data=data, step=step)
 
-    def __del__(self):
+    def finish(self, exit_code=0, error=None):
+        if self._finished:
+            return
         if "wandb" in self.logger:
-            self.logger["wandb"].finish(exit_code=0)
+            self.logger["wandb"].finish(exit_code=exit_code)
         if "swanlab" in self.logger:
-            self.logger["swanlab"].finish()
+            self.logger["swanlab"].finish(exit_code=exit_code, error=error)
         if "vemlp_wandb" in self.logger:
-            self.logger["vemlp_wandb"].finish(exit_code=0)
+            self.logger["vemlp_wandb"].finish(exit_code=exit_code)
         if "tensorboard" in self.logger:
             self.logger["tensorboard"].finish()
 
         if "clearnml" in self.logger:
             self.logger["clearnml"].finish()
+        self._finished = True
+
+    def __del__(self):
+        # Object collection does not establish whether the training job succeeded.
+        pass
 
 
 class ClearMLLogger:

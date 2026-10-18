@@ -33,7 +33,7 @@ def run_ppo(config) -> None:
     if not ray.is_initialized():
         # this is for local ray cluster
         ray.init(
-            runtime_env={"env_vars": {"TOKENIZERS_PARALLELISM": "true", "NCCL_DEBUG": "WARN", "VLLM_LOGGING_LEVEL": "WARN", "VLLM_ALLOW_RUNTIME_LORA_UPDATING": "true"}},
+            runtime_env={"env_vars": {"TOKENIZERS_PARALLELISM": "false", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "NCCL_DEBUG": "WARN", "VLLM_LOGGING_LEVEL": "WARN", "VLLM_ALLOW_RUNTIME_LORA_UPDATING": "true"}},
             num_cpus=config.ray_init.num_cpus,
         )
 
@@ -175,7 +175,19 @@ class TaskRunner:
             val_envs=val_envs,
         )
         trainer.init_workers()
-        trainer.fit()
+        try:
+            trainer.fit()
+        except BaseException as error:
+            logger = getattr(trainer, 'logger', None)
+            if logger is not None:
+                try:
+                    logger.finish(exit_code=1, error=type(error).__name__)
+                except Exception as logging_error:
+                    print(f'Logger could not close failed run: {type(logging_error).__name__}')
+            raise
+        else:
+            if getattr(trainer, 'logger', None) is not None:
+                trainer.logger.finish(exit_code=0)
 
 
 def create_rl_dataset(data_paths, data_config, tokenizer, processor):

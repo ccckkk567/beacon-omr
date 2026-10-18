@@ -43,7 +43,7 @@ def bounded_files(root, max_depth=6, limit=30000):
 
 
 PROBE = r'''
-import importlib.util, importlib.metadata, json, sys
+import importlib.util, importlib.metadata, json, sys, hashlib
 report = {"executable":sys.executable,"python":sys.version,"packages":{},"imports":{}}
 for package in ("torch","vllm","ray","transformers","flash-attn","tensordict",
                 "torchdata","swanlab","huggingface-hub","scienceworld","alfworld",
@@ -53,13 +53,25 @@ for package in ("torch","vllm","ray","transformers","flash-attn","tensordict",
 for name in ("verl","agent_system","scienceworld","alfworld","swanlab"):
     try:
         spec=importlib.util.find_spec(name)
-        report["imports"][name]=None if spec is None else spec.origin
+        report["imports"][name]=None if spec is None else {"origin":spec.origin,"search_locations":list(spec.submodule_search_locations or [])}
     except Exception as error: report["imports"][name]={"error":type(error).__name__}
 try:
     import torch
     report["cuda"]={"available":torch.cuda.is_available(),"torch_cuda":torch.version.cuda,
       "count":torch.cuda.device_count(),"devices":[torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]}
 except Exception as error: report["cuda"]={"error":str(error)}
+report["jars"] = []
+try:
+    distribution = importlib.metadata.distribution("scienceworld")
+    for file in distribution.files or []:
+        if str(file).endswith(".jar"):
+            path = distribution.locate_file(file)
+            digest = hashlib.sha256()
+            with open(path, "rb") as stream:
+                for block in iter(lambda: stream.read(1024*1024), b""): digest.update(block)
+            report["jars"].append({"path":str(path),"sha256":digest.hexdigest()})
+except importlib.metadata.PackageNotFoundError: pass
+except OSError as error: report["jar_error"] = str(error)
 print(json.dumps(report))
 '''
 
@@ -82,8 +94,19 @@ def inspect_site(work_root, extra_storage):
     report["java"] = command(["java", "-version"])
     report["partitions"] = command(["sinfo", "-o", "%P %l %G %c %m"])
     report["existing_jobs"] = command(["squeue", "-u", os.environ.get("USER", ""), "-o", "%.18i %.9P %.30j %.8T %.10M %.6D %R"])
+    if shutil.which('lfs'):
+        report['quota_evidence'] = command(['lfs', 'quota', '-u', os.environ.get('USER', ''), str(roots[0])])
+    elif shutil.which('quota'):
+        report['quota_evidence'] = command(['quota', '-s'])
     candidates = set()
     for base in (roots[0] / "envs", roots[0] / "runtimes"):
+        if base.is_dir():
+            # Include explicit environment aliases without recursively following
+            # arbitrary symlink trees.
+            for prefix in base.iterdir():
+                executable = prefix / 'bin/python'
+                if executable.is_file():
+                    candidates.add(executable)
         for path in bounded_files(base, max_depth=5):
             if path.name == "python" and path.parent.name == "bin":
                 candidates.add(path)
@@ -97,6 +120,8 @@ def inspect_site(work_root, extra_storage):
             bases.append(root)
         found = set()
         for base in bases:
+            if base.is_dir():
+                report.setdefault('asset_directories', {})[str(base)] = sorted(p.name for p in base.iterdir() if p.is_dir())
             for path in bounded_files(base):
                 if path in found:
                     continue

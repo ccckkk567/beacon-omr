@@ -1,0 +1,20 @@
+env:
+  env_name: Webshop
+  max_steps: 15
+  history_length: 2
+  webshop:
+    use_small: true
+    human_goals: false
+algorithm:
+  migpo:
+    gamma: 0.95
+    step_advantage_w: 1.0
+    mode: mean_norm
+    threshold: 0.95
+actor_rollout_ref:
+  actor:
+    ppo_mini_batch_size: 64
+    use_invalid_action_penalty: true
+    invalid_action_penalty_coef: 1.0
+  rollout:
+    gpu_memory_utilization: 0.60

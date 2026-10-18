@@ -239,7 +239,11 @@ def compute_response_mask(data: DataProto):
     responses = data.batch["responses"]
     response_length = responses.size(1)
     attention_mask = data.batch["attention_mask"]
-    return attention_mask[:, -response_length:]
+    mask = attention_mask[:, -response_length:].clone()
+    padding = data.non_tensor_batch.get('is_padding_copy')
+    if padding is not None:
+        mask[torch.as_tensor(padding, dtype=torch.bool, device=mask.device)] = 0
+    return mask
 
 
 def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, multi_turn=False, norm_adv_by_std_in_grpo=True, step_advantage_w=1.0, gigpo_mode="mean_std_norm", gigpo_enable_similarity=False, gigpo_similarity_thresh=0.95, **kwargs):
@@ -367,9 +371,11 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         migpo_threshold = kwargs.get('migpo_threshold', 0.85)
 
         # MIGPO: Extract milestone field (WebShop uses milestone_achieved, SciWorld uses subgoal_completed)
-        milestone_achieved = data.non_tensor_batch.get('milestone_achieved') or data.non_tensor_batch.get('subgoal_completed', None)
+        milestone_achieved = data.non_tensor_batch.get('milestone_achieved')
+        if milestone_achieved is None:
+            milestone_achieved = data.non_tensor_batch.get('subgoal_completed')
 
-        advantages, returns = compute_migpo_advantage(
+        advantages, returns, trajectory_advantages, segment_advantages = compute_migpo_advantage(
             token_level_rewards=data.batch['token_level_rewards'],
             step_rewards=data.batch['step_rewards'],
             response_mask=data.batch['response_mask'],
@@ -382,7 +388,14 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
             step_advantage_w=migpo_step_advantage_w,
             mode=migpo_mode,
             milestone_achieved=milestone_achieved,
+            segment_ids=data.non_tensor_batch.get('segment_id'),
+            local_steps=data.non_tensor_batch.get('local_step'),
+            is_padding_copy=data.non_tensor_batch.get('is_padding_copy'),
+            initial_milestone_index=data.non_tensor_batch.get('initial_milestone_index'),
+            return_components=True,
         )
+        data.batch['trajectory_advantages'] = trajectory_advantages
+        data.batch['segment_advantages'] = segment_advantages
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
     else:
@@ -1050,6 +1063,7 @@ class RayPPOTrainer:
             default_backend=self.config.trainer.logger,
             config=OmegaConf.to_container(self.config, resolve=True),
         )
+        self.logger = logger
 
         self.global_steps = 0
 

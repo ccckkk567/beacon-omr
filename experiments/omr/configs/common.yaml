@@ -1,0 +1,101 @@
+# Frozen intended protocol. Runtime/trainer integration is not ready yet.
+algorithm:
+  adv_estimator: migpo
+  gamma: 0.95
+  use_kl_in_reward: false
+  filter_groups:
+    enable: false
+actor_rollout_ref:
+  model:
+    enable_gradient_checkpointing: true
+    use_remove_padding: true
+  actor:
+    optim:
+      lr: 1.0e-6
+    use_kl_loss: true
+    kl_loss_coef: 0.01
+    kl_loss_type: low_var_kl
+    ppo_micro_batch_size_per_gpu: 4
+    loss_agg_mode: token-mean
+    fsdp_config:
+      param_offload: false
+      optimizer_offload: false
+    checkpoint:
+      contents: [model, optimizer, extra]
+  rollout:
+    name: vllm
+    tensor_model_parallel_size: 1
+    log_prob_micro_batch_size_per_gpu: 4
+    temperature: 1.0
+    top_p: 1.0
+    n: 1
+    enable_chunked_prefill: false
+    enforce_eager: false
+    free_cache_engine: false
+    val_kwargs:
+      do_sample: true
+      temperature: 0.4
+      top_p: 1.0
+      n: 1
+  ref:
+    log_prob_micro_batch_size_per_gpu: 4
+    fsdp_config:
+      param_offload: true
+trainer:
+  nnodes: 1
+  n_gpus_per_node: 2
+  logger: [console, swanlab]
+  project_name: beacon-milestone-reuse
+  critic_warmup: 0
+  total_training_steps: 150
+  total_epochs: 200
+  save_freq: 5
+  test_freq: 15
+  val_before_train: true
+  resume_mode: disable
+  del_local_ckpt_after_load: false
+  default_hdfs_dir: null
+data:
+  train_batch_size: 16
+  val_batch_size: 16
+  max_prompt_length: 7000
+  max_response_length: 512
+  return_raw_chat: true
+  truncation: error
+  filter_overlong_prompts: false
+env:
+  seed: 0
+  rollout:
+    n: 8
+  resources_per_worker:
+    num_cpus: 0.1
+    num_gpus: 0
+omr:
+  enabled: true
+  restart_fraction: 0.50
+  priority:
+    base_weight: 0.05
+    discovery_weight: 1.0
+  mixture:
+    staleness: 0.10
+    coverage: 0.20
+  statistics:
+    half_life_updates: 20
+    success_prior_a: 1.0
+    success_prior_b: 1.0
+    evidence_reference_trials: 8
+    event_weight: equal_per_checkpoint
+  archive:
+    max_entries_total: 8192
+    max_entries_per_task: 8
+    max_entries_per_coverage_key: 2
+    max_untried_per_task: 2
+    first_trial_groups: 1
+    protect_untried: true
+    new_entries_active_next_update: true
+  staleness_cap_updates: 50
+  strict_goal_in_event_set: true
+  recursive_admission: true
+  dynamic_group_filtering: false
+  tracking:
+    resume: never

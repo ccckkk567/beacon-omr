@@ -1,3 +1,8 @@
+> **OMR experiment development:** This is a working derivative of the pinned
+> upstream BEACON source. See [execution status](docs/omr/STATUS.md) and
+> [source audit](docs/omr/SOURCE_AUDIT.md). Native restart/trainer integration and
+> Orion readiness are still in progress; the formal experiments have not run.
+
 <p align="center">
   <img src="assets/logo.png" alt="BEACON logo" width="110">
 </p>
