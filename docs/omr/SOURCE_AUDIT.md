@@ -80,5 +80,7 @@ upstream Run.finish; the installed HPC version remains authoritative:
 
 24 local unit/numerical fixtures passed with Python 3.12 and Torch 2.10 CPU tensor
 execution on Windows. This is **not** the training dependency profile and is not
-evidence of Orion simulator/GPU readiness. No actual environment rollout, training
-update, Slurm execution, SwanLab upload or model checkpoint is claimed by this audit.
+evidence of Orion simulator/GPU readiness. The user has since returned Slurm
+inventory job 165833, confirming two H200 devices are visible through existing
+Torch installations; see `SITE_PREPARATION.md`. Actual environment interaction,
+training updates, SwanLab uploads and model checkpoints remain unverified.

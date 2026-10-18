@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import ray
-import gym
+import gymnasium as gym
 import numpy as np
 from copy import deepcopy
 

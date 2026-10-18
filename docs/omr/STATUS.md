@@ -10,12 +10,15 @@ The OMR implementation is in progress. **Do not launch the six formal runs yet.*
 - Standalone archive, statistics, sampler, controller and payload store.
 - Standalone atomic latest-only checkpoint transaction with failure tests.
 - Single-writer SwanLab integration and explicit failed-run shutdown.
-- 24 local fixtures pass. Source compilation succeeds.
+- Local suite: 30 passed, 1 skipped (Windows cannot create the symlink fixture).
+  Source compilation and submission-script syntax checks passed. The follow-up
+  job reruns these fixtures in the existing HPC stack; GPU acceptance is separate.
 
 ## Current external dependency
 
-The user must execute the supplied Slurm inventory commands through their existing
-VS Code Tunnel and return the report. The assistant has no Orion connection.
+The user returned inventory job 165833: two H200 GPUs are visible and existing
+ScienceWorld/AppWorld dependency stacks are candidates for reuse. See
+`SITE_PREPARATION.md` for evidence and limits. The assistant has no Orion connection.
 
 The submission helper now clones/checks the small code repository on the login
 node and submits inventory directly to `testqueue`, without an `ioqueue` job or
@@ -24,6 +27,10 @@ CPU-job dependency. Environment imports and GPU checks still run inside Slurm.
 Environment setup/reuse decisions require the real GPU-node package/import paths,
 model assets, Java/JAR and available storage. Inventory does not install packages,
 load a large model, read credential values, or modify old experiments.
+
+The next command submits `preflight.sbatch` for symlink-aware asset discovery,
+isolated package/source imports, GPU kernels and NCCL, and bounded test-only native
+simulator interactions. Its returned report is needed before finalizing reuse.
 
 ## Remaining implementation / acceptance
 
