@@ -7,14 +7,19 @@ EXTRA="${2:?Pass the overflow model/data root}"
 INVENTORY="${3:?Pass the completed inventory JSON path}"
 SCOPE="${4:-all}"
 case "$SCOPE" in all|webshop) ;; *) printf 'Scope must be all or webshop\n' >&2; exit 2 ;; esac
-REPO="$ROOT/code/beacon-omr"
+REPO="${OMR_SOURCE_REPO:-$ROOT/code/beacon-omr}"
 printf 'Checking preflight submission prerequisites (scope=%s)...\n' "$SCOPE"
 test -r "$INVENTORY" || fail "Inventory JSON is missing or unreadable: $INVENTORY"
-test -d "$REPO/.git" || fail "Expected Git checkout is missing: $REPO"
+git -C "$REPO" rev-parse --show-toplevel >/dev/null 2>&1 || fail "Expected Git checkout is missing: $REPO"
 ORIGIN=$(git -C "$REPO" remote get-url origin) || fail 'Cannot read the origin remote'
 test "$ORIGIN" = https://github.com/ccckkk567/beacon-omr.git || fail 'Origin does not match the BEACON OMR repository'
 BRANCH=$(git -C "$REPO" branch --show-current) || fail 'Cannot read the current branch'
-test "$BRANCH" = exp/beacon-online-milestone-reuse-h200x2-20261018 || fail "Unexpected branch: $BRANCH"
+if [ -n "${OMR_SOURCE_COMMIT:-}" ]; then
+  [[ "$OMR_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail 'Expected source commit must be a full commit hash'
+  test "$(git -C "$REPO" rev-parse HEAD)" = "$OMR_SOURCE_COMMIT" || fail 'Source checkout does not match the expected commit'
+else
+  test "$BRANCH" = exp/beacon-online-milestone-reuse-h200x2-20261018 || fail "Unexpected branch: $BRANCH"
+fi
 DIRTY=$(git -C "$REPO" status --porcelain) || fail 'Cannot inspect checkout status'
 if [ -n "$DIRTY" ]; then
   printf 'Checkout changes (paths only):\n%s\n' "$DIRTY" >&2

@@ -77,6 +77,22 @@ The default submission checks all three environments. Pass `webshop` as the four
 argument to `submit_preflight.sh` for a supplement if the earlier checks already
 ran. Wait for a running earlier job to finish before pulling into its checkout.
 
+## Checkout normalization and frozen submission
+
+The first submission stopped at its clean-checkout check. Four reported modified
+Search-R1 files have CRLF Git blobs despite the repository's `*.py eol=lf` rule.
+A fresh local checkout reproduced these modifications, plus `docs/conf.py`, without
+any user edits. All five blobs are now normalized to LF; their bytes otherwise
+remain unchanged. The user's original HPC modifications are not discarded or
+assumed to be exclusively line-ending changes.
+
+`submit_frozen_preflight.sh` fetches a specified published commit and creates a
+separate detached worktree under `code/beacon-omr-runs/`. The original checkout's
+working files and branch remain intact. The ordinary submission helper validates
+the frozen revision and clean state in that new directory before submitting all
+three environments' checks. Worktrees use the same Git object store and existing
+external model/data paths; models and datasets are not copied.
+
 The local suite has 35 passing tests and one symlink fixture skipped because the
 Windows process cannot create that link. The follow-up job also reruns the core
 fixtures in the existing HPC dependency stack, including that symlink test.
