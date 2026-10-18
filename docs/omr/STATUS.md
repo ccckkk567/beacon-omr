@@ -52,19 +52,35 @@ isolated v1 venv and retrieval/verification of the English model wheel completed
 dependency installation, dataset/index preparation and subsequent native checks
 did not run. False acceptance flags in this report mean not yet verified, not
 additional simulator failures. The fix pins the spaCy/thinc/BLIS wheel combination
-and requires binary packages except pure-Python Gym. A small v2 venv reuses the
-same base/cache/assets while preserving v1's ownership marker. Its GPU retry is
-still pending; no formal training or optimizer update has run.
+and requires binary packages except pure-Python Gym.
+
+Returned retry **165848**, source `3000f2f`, again stopped during dependency
+resolution. It now identifies the conflict: smart-open 8.0.3 is pinned in the base,
+but weasel 0.4.1–0.4.3 require smart-open below 8; older weasel releases reject the
+base's Typer 0.27.3. The user supplied all 216 base package versions. The next recipe
+pins weasel 0.4.3 and allows only smart-open 7.7.1 to shadow its base counterpart
+inside a small v3 venv. It checks installed dependents before installation, installs
+only approved hashed artifacts without uninstalling base files, and verifies reused
+package versions/locations afterward. Base packages, cache and HF assets are reused;
+v1/v2 markers remain intact. The GPU retry is pending. No formal training or
+optimizer update has run.
 
 Before this fix, local checks covered 45 fixtures (44 passed; the Windows symlink fixture is
 skipped), including persistent child-runtime isolation, rejection of dependency
 replacement, asset hash failures, native terminal/reset behavior and SDK naming.
-All eight targeted preparation fixtures now pass, including rejection of compiled
-source archives and preservation of dependency choices in long failure logs.
-A separate no-install pip resolution for CPython 3.12 / manylinux x86-64 selected
+All 12 targeted preparation fixtures now pass, including a real offline pip
+installation into an isolated fixture venv that preserves every base file, exact
+overlay allowlisting, dependent checks and post-install provenance checks.
+The earlier no-install pip resolution for CPython 3.12 / manylinux x86-64 selected
 42 wheels for the pinned spaCy/thinc/BLIS stack with NumPy 1.26.4; the real pip
 requirements parser also confirms binary-only BLIS/thinc and the Gym source
-exception. This checks the NLP wheel combination, not all installed HPC constraints.
+exception. That check covered the NLP wheel combination, not the installed HPC constraints.
+A new no-install resolution uses the 216 returned HPC version constraints (with
+the one explicit smart-open exception) and the full WebShop wheel requirements.
+It resolved 99 wheels; smart-open 8.0.3 to 7.7.1 is the only changed base version.
+The projected new-artifact list passes the same version/hash guards used by the
+preparer. This cross-platform check excludes unchanged source-only Gym and does
+not emulate Linux dependency markers or replace native GPU-node acceptance.
 Submission scripts pass Bash syntax checking. These are not HPC acceptance results.
 
 ## Remaining implementation / acceptance

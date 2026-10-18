@@ -1,7 +1,8 @@
 """Prepare only WebShop on an allocated GPU, using returned site evidence.
 
 Reuse the validated ScienceWorld package files through an independent venv.
-Install missing packages only; old environments and working trees stay untouched.
+Install missing packages and the exact allowed helper overlay into the new venv.
+Old environments and working trees stay untouched.
 """
 from __future__ import annotations
 
@@ -22,8 +23,9 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from experiments.omr.environment_scope import excluded_environment
 from experiments.omr.latest_checkpoint import atomic_json
-from experiments.omr.preparation import (dependency_log_context, file_identity, hf_token_from_file,
-                                         validate_install_plan, write_runtime_paths)
+from experiments.omr.preparation import (WEBSHOP_OVERLAYS, dependency_log_context, file_identity,
+    hf_token_from_file, locked_install_requirements, reuse_constraints,
+    validate_install_plan, validate_reuse_after_install, write_runtime_paths)
 
 
 class Preparation:
@@ -117,12 +119,11 @@ class Preparation:
         if not base_site.is_dir():
             raise ValueError('Validated base package directory is missing')
         requirements = REPO / 'experiments/omr/webshop-requirements.txt'
-        owner = {'schema': 1, 'base_prefix': str(base),
+        owner = {'schema': 2, 'base_prefix': str(base), 'helper_overlays': WEBSHOP_OVERLAYS,
                  'requirements_sha256': hashlib.sha256(requirements.read_bytes()).hexdigest()}
-        # v1 failed before installation with the old, unpinned BLIS recipe. Its
-        # ownership hash must not be bypassed or overwritten when changing that recipe.
-        # This small venv still shares the same base packages and asset/download cache.
-        self.prefix = self.work / 'envs/beacon-omr-web-v2'
+        # Preserve the failed v1/v2 recipes and their ownership markers. This small
+        # venv still shares the same base packages and asset/download cache.
+        self.prefix = self.work / 'envs/beacon-omr-web-v3'
         marker = self.prefix / 'OMR-RUNTIME.json'
         if self.prefix.is_symlink():
             raise ValueError('Dedicated runtime path must not be a symlink')
@@ -171,22 +172,41 @@ class Preparation:
         return {name: file_identity(directory / name, identity) for name, identity in spec['files'].items()}
 
     def install_dependencies(self, wheel):
-        current = json.loads(self.run('packages-before', [self.executable, '-I', '-B', '-m', 'pip',
-                                                        'list', '--format=json']))
-        constraints = self.directory / 'existing-constraints.txt'
-        constraints.write_text(''.join(f"{p['name']}=={p['version']}\n" for p in current))
+        inventory_code = ('import json; from experiments.omr.preparation import package_inventory; '
+                          'print(json.dumps(package_inventory()))')
+        current = json.loads(self.python('packages-before', inventory_code))
+        before_path = self.directory / 'packages-before.json'
+        atomic_json(before_path, current)
+        (self.directory / 'existing-constraints.txt').write_text(reuse_constraints(current))
+        constraints = self.directory / 'reuse-constraints.txt'
+        constraints.write_text(reuse_constraints(current, WEBSHOP_OVERLAYS))
         requirements = REPO / 'experiments/omr/webshop-requirements.txt'
         plan_path = self.directory / 'install-plan.json'
         command = [self.executable, '-I', '-B', '-m', 'pip', 'install',
                    '--constraint', constraints, '-r', requirements, wheel]
         self.run('resolve-missing-packages', [*command, '--dry-run', '--report', plan_path], timeout=1800)
-        selected = validate_install_plan(json.loads(plan_path.read_text()), current)
+        plan = json.loads(plan_path.read_text())
+        selected = validate_install_plan(plan, current, WEBSHOP_OVERLAYS)
         self.report['new_packages'] = selected
+        self.report['helper_overlay'] = json.loads(self.python('check-helper-dependents',
+            'import json,sys; from pathlib import Path; '
+            'from experiments.omr.preparation import validate_overlay_dependents; '
+            'print(json.dumps(validate_overlay_dependents('
+            'json.loads(Path(sys.argv[1]).read_text()), json.loads(Path(sys.argv[2]).read_text()))))',
+            before_path, plan_path))
         frozen = self.directory / 'resolved-constraints.txt'
         frozen.write_text(constraints.read_text() + ''.join(f"{p['name']}=={p['version']}\n" for p in selected))
         if selected:
-            self.run('install-missing-packages', [*command, '--constraint', frozen,
+            approved = self.directory / 'approved-artifacts.txt'
+            approved.write_text(locked_install_requirements(plan))
+            # --ignore-installed is applied ONLY to the approved artifact list,
+            # never the original requirements. pip cannot uninstall shared files.
+            self.run('install-approved-packages', [self.executable, '-I', '-B', '-m', 'pip',
+                     'install', '--no-deps', '--ignore-installed', '--require-hashes', '-r', approved,
                      '--report', self.directory / 'installed.json'], timeout=3600)
+        after = json.loads(self.python('packages-after', inventory_code))
+        atomic_json(self.directory / 'packages-after.json', after)
+        self.report['base_package_reuse'] = validate_reuse_after_install(current, after, WEBSHOP_OVERLAYS)
         self.run('pip-check', [self.executable, '-I', '-B', '-m', 'pip', 'check'])
         self.run('pip-freeze', [self.executable, '-I', '-B', '-m', 'pip', 'freeze'])
 
@@ -321,7 +341,7 @@ def main():
                     output = log.read_text(encoding='utf-8')
                     summary['log_tail'] = output[-6000:]
                     if preparation.report.get('current_stage') in {
-                            'resolve-missing-packages', 'install-missing-packages'}:
+                            'resolve-missing-packages', 'install-approved-packages'}:
                         summary['dependency_context'] = dependency_log_context(output)
                 details = preparation.directory / (str(preparation.report.get('current_stage')) + '.json')
                 if details.is_file():

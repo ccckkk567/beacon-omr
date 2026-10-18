@@ -10,12 +10,29 @@ checkout, and submits one H200 / 8 CPU / 48 GiB / two-hour `testqueue` job.
 
 `prepare_webshop.py` selects the passing ScienceWorld runtime from the report:
 Torch 2.6.0, vLLM 0.8.2, Transformers 4.51.1, Python 3.12. It creates an owned
-`envs/beacon-omr-web-v2` venv. Its `.pth` file adds the existing package directory
+`envs/beacon-omr-web-v3` venv. Its `.pth` file adds the existing package directory
 as a plain path, without executing that directory's editable-install hooks. New
-packages install only into the new venv. All currently installed distributions
-are constrained to their existing versions; a dry-run install plan must contain
-only new packages. Attempts to replace existing packages or download training/CUDA
-libraries stop preparation. `pip check` and the resolved install manifest are saved.
+packages install only into the new venv. Existing distributions stay constrained
+to their current versions, with one explicit helper exception: `smart-open==7.7.1`
+may shadow the base's 8.0.3 inside this venv. Torch, CUDA, NumPy, Typer and other
+base packages stay pinned. Attempts to replace any other existing package, use
+another helper version or download training/CUDA libraries stop preparation.
+
+Returned job 165848 exposed the dependency conflict: weasel 0.4.1–0.4.3 require
+smart-open below 8, while older weasel versions conflict with the installed Typer
+0.27.3. Pin weasel 0.4.3 and smart-open 7.7.1. Before installing, inspect effective
+package metadata on the GPU node and check active requirements of installed
+dependents against the proposed helper version. This covers existing consumers
+that pip's resolver might omit; optional extras are not assumed active.
+
+After validating the plan, install only its exact artifact URLs and SHA256 hashes
+with `--no-deps --ignore-installed --require-hashes`. These flags apply to the
+approved artifact list, not to the original requirements or the entire base:
+there is no second solve or attempt to uninstall a shared distribution. The local
+pip fixture verifies that a new venv imports the helper override while every
+file in its simulated base stays unchanged. After installation, check all reused
+package versions and locations, then run `pip check`. Full before/after metadata,
+constraints, approved artifacts and install reports remain in private evidence.
 
 Returned job 165846 stopped during dependency resolution: a BLIS source build
 failed in Cython. No package-install step, dataset download or native acceptance
@@ -31,10 +48,10 @@ All dependencies must now use wheels except the source-only, pure-Python Gym
 Inherited `PIP_*` overrides are cleared before applying the preparation's own
 settings, so an unrelated source-build or index policy cannot change this recipe.
 
-The failed v1 venv and its ownership marker stay intact. The small v2 venv shares
+The failed v1/v2 venvs and their ownership markers stay intact. The small v3 venv shares
 the same validated base package files and download cache; the already verified
-English model wheel is reused. This avoids bypassing v1's different requirements
-hash. Failed dependency logs now include resolver choices as well as the traceback
+English model wheel is reused. This avoids bypassing earlier requirements hashes.
+Failed dependency logs include resolver choices as well as the traceback
 tail, so the selected package versions remain visible in the returned summary.
 
 The selected source is supplied per job through `OMR_SOURCE_ROOT`. Ordinary Python
@@ -45,7 +62,7 @@ remove the reused ScienceWorld installation while this runtime depends on it.
 Native Gym 0.24.0, Pyserini 0.17.0 and Flask/Werkzeug 2.1 are preserved. spaCy 3.7.5
 is compatible with the pinned English 3.7.1 model; Selenium 4.27.1 supplies the
 vendored browser-module imports without the old urllib3 1.x restriction. This
-avoids replacing existing helpers merely to satisfy spaCy 3.7.2's older Typer
+avoids replacing Typer merely to satisfy spaCy 3.7.2's older Typer
 ceiling or Selenium 4.2.0's urllib3 ceiling. No browser is launched. The resulting
 runtime is shared by this environment's baseline/full pair after acceptance.
 
