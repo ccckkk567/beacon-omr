@@ -10,6 +10,7 @@ import numpy as np
 from bs4 import BeautifulSoup
 from bs4.element import Comment
 from collections import defaultdict
+from copy import deepcopy
 from flask import Flask
 from web_agent_site.engine.engine import (
     load_products,
@@ -136,7 +137,11 @@ class WebAgentTextEnv(gym.Env):
         state = ' [SEP] '.join(text_list[::-1])
         self.prev_obs.append(ob)
         if status['done']:
-            self.reset()
+            # Preserve the terminal session until the caller explicitly resets.
+            # The worker/detector must see the actual purchased product/options.
+            session = self.server.user_sessions[self.session]
+            info = {'terminal_session': deepcopy({key: session.get(key) for key in
+                    ('done', 'reward', 'asin', 'options', 'verbose_info', 'actions')})}
         return state, status['reward'], status['done'], info
 
     def get_available_actions(self):
@@ -264,6 +269,9 @@ class WebAgentTextEnv(gym.Env):
         if self.session_prefix is not None:
             self.session = self.session_prefix + self.session
 
+        # A repeated explicit task reset must not retain an earlier purchase or
+        # mutable session. The stable goal is selected again by session_int.
+        self.server.user_sessions.pop(self.session, None)
         init_url = f'{self.base_url}/{self.session}'
         self.browser.get(init_url, session_id=self.session, session_int=session_int)
 

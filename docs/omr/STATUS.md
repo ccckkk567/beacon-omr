@@ -10,7 +10,7 @@ The OMR implementation is in progress. **Do not launch the six formal runs yet.*
 - Standalone archive, statistics, sampler, controller and payload store.
 - Standalone atomic latest-only checkpoint transaction with failure tests.
 - Single-writer SwanLab integration and explicit failed-run shutdown.
-- Local suite: 35 passed, 1 skipped (Windows cannot create the symlink fixture).
+- Local suite before targeted preparation: 35 passed, 1 skipped (Windows cannot create the symlink fixture).
   Source compilation and submission-script syntax checks passed. The follow-up
   job reruns these fixtures in the existing HPC stack; GPU acceptance is separate.
 
@@ -39,6 +39,16 @@ not an instruction to download the full catalog. Preparation and checks run on G
 compute nodes. Preserve the existing ALFWorld/ScienceWorld evidence without rerunning
 it merely because the candidate list changed. See `SITE_PREPARATION.md` for limits.
 The assistant has no Orion connection; the user executes remote jobs via Tunnel.
+
+The targeted WebShop preparation is now implemented; see `WEBSHOP_PREPARATION.md`.
+It creates an independent venv reusing the ScienceWorld stack, downloads only pinned
+small-catalog/NLP assets, builds and checks Lucene, tests purchase/reset receipts,
+checks persistent Ray source imports, verifies/loads existing Qwen weights and
+exercises SwanLab offline logging. Its HPC result has not yet been returned.
+Local checks now cover 45 fixtures (44 passed; the Windows symlink fixture is
+skipped), including persistent child-runtime isolation, rejection of dependency
+replacement, asset hash failures, native terminal/reset behavior and SDK naming.
+Submission scripts pass Bash syntax checking. These are not HPC acceptance results.
 
 ## Remaining implementation / acceptance
 

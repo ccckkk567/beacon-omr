@@ -143,7 +143,7 @@ def interaction(payload):
         def episode():
             nonlocal worker
             worker = WebshopWorker(seed, dict(paths, num_products=binding['num_products'],
-                observation_mode='text_rich', human_goals=False, goal_manifest_seed=0))
+                observation_mode='text', human_goals=False, goal_manifest_seed=0))
             obs, info = worker.reset(0)
             env = worker.env.unwrapped
             goal = env.server.user_sessions[env.session]['goal']
@@ -170,6 +170,27 @@ def interaction(payload):
             if done or session.get('asin') != product.upper() or session['actions']['search'] < 1 or session['actions']['asin'] < 1:
                 raise RuntimeError('Native session does not confirm search/product-click transitions')
             record['selected_asin'] = session['asin']
+            session_id = env.session
+            obs, reward, done, info = worker.step('click[Buy Now]')
+            terminal = info.get('terminal_session', {})
+            native = env.server.user_sessions[session_id]
+            if (not done or env.session != session_id or not native['done'] or
+                    terminal.get('asin') != record['selected_asin'] or
+                    terminal.get('reward') != info['task_score'] or
+                    terminal.get('actions', {}).get('purchase') != 1 or
+                    not terminal.get('verbose_info') or info['goal_id'] != record['goal_id']):
+                raise RuntimeError('Purchase terminal evidence was lost or replaced by an automatic reset')
+            if bool(info['won']) != (info['task_score'] == 1.0):
+                raise RuntimeError('Strict WebShop completion differs from the native terminal score')
+            record['steps'].append({'action': 'click[Buy Now]', 'observation': obs,
+                                    'reward': reward, 'done': done, 'terminal': terminal})
+            reset_obs, reset_info = worker.reset(0)
+            reset_session = env.server.user_sessions[env.session]
+            if (reset_obs != record['reset_observation'] or reset_info['goal_id'] != record['goal_id']
+                    or reset_session['done'] or reset_session.get('reward') is not None
+                    or reset_session.get('verbose_info') is not None or reset_session['actions']):
+                raise RuntimeError('Explicit repeated task reset retained terminal state')
+            record['terminal_preserved_and_reset_clean'] = True
             return record
         try:
             report['episodes'].append(check(episode))

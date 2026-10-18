@@ -20,6 +20,17 @@ class FakeSDK:
 
 
 class MonitoringTests(unittest.TestCase):
+    def test_current_sdk_uses_explicit_name_and_log_dir_parameters(self):
+        class CurrentSDK:
+            def init(self, *, project, name, config, log_dir, mode):
+                self.received = (project, name, log_dir, mode)
+                return FakeRun()
+        with tempfile.TemporaryDirectory() as tmp:
+            sdk = CurrentSDK()
+            monitor = SwanLabMonitor('project', 'fixture', {}, {'logdir': tmp, 'mode': 'offline'}, sdk)
+            self.assertEqual(sdk.received, ('project', 'fixture', tmp, 'offline'))
+            monitor.finish()
+
     def test_failure_status_and_local_first_logging(self):
         with tempfile.TemporaryDirectory() as tmp:
             sdk = FakeSDK()

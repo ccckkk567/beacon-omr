@@ -56,8 +56,11 @@ class SwanLabMonitor:
         self.mode = options.pop('mode', os.environ.get('SWANLAB_MODE', 'online'))
         self.status = {"status": "initializing", "remote_readback_verified": False, "mode": self.mode}
         atomic_json(self.status_path, self.status)
-        kwargs = dict(project=project, experiment_name=name, config=sanitized(config or {}),
-                      logdir=str(self.directory), mode=self.mode)
+        parameters = inspect.signature(sdk.init).parameters
+        name_key = 'name' if 'name' in parameters else 'experiment_name'
+        directory_key = 'log_dir' if 'log_dir' in parameters else 'logdir'
+        kwargs = dict(project=project, config=sanitized(config or {}), mode=self.mode)
+        kwargs.update({name_key: name, directory_key: str(self.directory)})
         allowed = {'workspace', 'id', 'resume', 'group', 'job_type', 'tags', 'description'}
         unexpected = set(options) - allowed
         if unexpected:
@@ -68,8 +71,10 @@ class SwanLabMonitor:
         # The SDK reads SWANLAB_API_KEY from the process. Do not persist login or
         # overwrite the user's shared login state with swanlab.login().
         self.run = sdk.init(**kwargs)
+        public = getattr(self.run, 'public', None)
         self.status.update(status='offline_pending_sync' if self.mode in ('offline', 'local') else 'online_unverified',
-                           run_id=getattr(self.run, 'id', None), url=getattr(self.run, 'url', None))
+                           run_id=getattr(self.run, 'id', None) or getattr(public, 'run_id', None),
+                           url=getattr(self.run, 'url', None) or getattr(getattr(public, 'cloud', None), 'experiment_url', None))
         atomic_json(self.status_path, self.status)
 
     def log(self, data, step):

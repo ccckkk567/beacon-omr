@@ -1,0 +1,75 @@
+{
+  "HongbangYuan/webshop": {
+    "revision": "0129d4a81dbdb827e76afd20a1e2c38b61098613",
+    "repo_type": "dataset",
+    "files": {
+      "items_human_ins.json": {
+        "bytes": 5137548,
+        "algorithm": "git-blob-sha1",
+        "digest": "b2ab7479b9798e0b62ea394e065f3d506875f090"
+      },
+      "items_ins_v2_1000.json": {
+        "bytes": 147099,
+        "algorithm": "git-blob-sha1",
+        "digest": "22837ad99f3173712fc9cb1cce7de6b75fe90595"
+      },
+      "items_shuffle_1000.json": {
+        "bytes": 4467013,
+        "algorithm": "git-blob-sha1",
+        "digest": "08dfda9a1c896e0f69d50e3437dd3fe94419b7d7"
+      }
+    }
+  },
+  "spacy/en_core_web_sm": {
+    "revision": "8fb6f8155286360bf5486fe399e2738d1df7ded2",
+    "repo_type": "model",
+    "files": {
+      "en_core_web_sm-any-py3-none-any.whl": {
+        "bytes": 12803381,
+        "algorithm": "sha256",
+        "digest": "86cc141f63942d4b2c5fcee06630fd6f904788d2f0ab005cce45aadb8fb73889"
+      }
+    }
+  },
+  "Qwen/Qwen2.5-1.5B-Instruct": {
+    "revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+    "repo_type": "model",
+    "files": {
+      "config.json": {
+        "bytes": 660,
+        "algorithm": "git-blob-sha1",
+        "digest": "f81ead14ab072d65a07817f83a3ee0e5a1890d10"
+      },
+      "generation_config.json": {
+        "bytes": 242,
+        "algorithm": "git-blob-sha1",
+        "digest": "dfc11073787daf1b0f9c0f1499487ab5f4c93738"
+      },
+      "merges.txt": {
+        "bytes": 1671839,
+        "algorithm": "git-blob-sha1",
+        "digest": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0"
+      },
+      "model.safetensors": {
+        "bytes": 3087467144,
+        "algorithm": "sha256",
+        "digest": "dd924a11b4c220f385b51ffa522daea7c9f3d850e31b162bb5661df483c6d3ee"
+      },
+      "tokenizer.json": {
+        "bytes": 7031645,
+        "algorithm": "git-blob-sha1",
+        "digest": "443909a61d429dff23010e5bddd28ff530edda00"
+      },
+      "tokenizer_config.json": {
+        "bytes": 7305,
+        "algorithm": "git-blob-sha1",
+        "digest": "07bfe0640cb5a0037f9322287fbfc682806cf672"
+      },
+      "vocab.json": {
+        "bytes": 2776833,
+        "algorithm": "git-blob-sha1",
+        "digest": "4783fe10ac3adce15ac8f358ef5462739852c569"
+      }
+    }
+  }
+}

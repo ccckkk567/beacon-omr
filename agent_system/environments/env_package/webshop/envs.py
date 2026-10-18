@@ -46,7 +46,9 @@ class WebshopWorker:
             # Products/prices/goals themselves consume randomness before the
             # simulator shuffles goals. Seed the complete manifest construction.
             random.seed(env_kwargs['seed'])
-            self.env = gym.make('WebAgentTextEnv-v0', **env_kwargs)
+            # Gym 0.24's generic checker can execute extra reset/step calls;
+            # WebShop has a text-action API and is validated by native fixtures.
+            self.env = gym.make('WebAgentTextEnv-v0', disable_env_checker=True, **env_kwargs)
         finally:
             random.setstate(previous_rng)
 

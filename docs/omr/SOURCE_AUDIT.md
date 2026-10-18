@@ -17,6 +17,8 @@ This checkout was cloned from Git, not imported from the ZIP.
 | ScienceWorld shared split mutation | `sciworld/envs.py:207` copies kwargs before split extraction | Explicit train/dev/test manifests and actual load receipts still require integration |
 | Reset score incorrectly zero | `sciworld/envs.py:157` uses reset score as `prev_score`; preserves reference reward formula | Strict completion predicate must be established from installed JAR/package |
 | WebShop worker-specific goals | `webshop/envs.py:40` separates fixed manifest seed from worker seed, seeds complete price/goal construction, records actual goal content identity | Need live all-worker digest and actual split overlap checks; integer indexes alone are not acceptance evidence |
+| WebShop terminal session lost | Native text step preserves a copied purchase receipt and defers reset; explicit reset discards the previous mutable session | Local regression passes; the targeted GPU preparation checks real search/click/purchase/reset |
+| WebShop assets tied to checkout | Environment construction accepts explicit shared product/attribute/human-attribute/index paths | Small-catalog data and one Lucene index are prepared outside Git; native acceptance pending |
 | Physical batch reorder changed segments | `migpo/core_migpo.py:38` sorts by local step, precomputes segment IDs, passes them into advantages | Exact numerical permutation fixtures pass |
 | Padding altered group evidence | `multi_turn_rollout/utils.py:100,129` marks copies; MiGPO excludes copies, trainer/actor masks their policy/KL/entropy contributions | Numerical advantage fixture passes; distributed optimizer equivalence remains a GPU acceptance item |
 | Restarts could re-award prefix milestones | `match_milestones` accepts initial offset; reward and advantage share precomputed segments | Offset fixture passes; real restart adapters are not integrated yet |
@@ -60,9 +62,6 @@ upstream Run.finish; the installed HPC version remains authoritative:
 
 ## Additional issues found; still open
 
-- `WebAgentTextEnv.step()` automatically resets after terminal purchase. The worker
-  subsequently inspects the new session for verbose completion evidence. Preserve
-  the terminal receipt and avoid using a reset world's state for archive/Goal.
 - The ALF TextWorld limit and ScienceWorld `env_step_limit` still need a separate
   replay-prefix allowance plus H new actions without resetting native world time.
 - Existing WebShop rendering has a long-text fallback that drops history. Record
