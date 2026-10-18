@@ -10,12 +10,32 @@ checkout, and submits one H200 / 8 CPU / 48 GiB / two-hour `testqueue` job.
 
 `prepare_webshop.py` selects the passing ScienceWorld runtime from the report:
 Torch 2.6.0, vLLM 0.8.2, Transformers 4.51.1, Python 3.12. It creates an owned
-`envs/beacon-omr-web-v1` venv. Its `.pth` file adds the existing package directory
+`envs/beacon-omr-web-v2` venv. Its `.pth` file adds the existing package directory
 as a plain path, without executing that directory's editable-install hooks. New
 packages install only into the new venv. All currently installed distributions
 are constrained to their existing versions; a dry-run install plan must contain
 only new packages. Attempts to replace existing packages or download training/CUDA
 libraries stop preparation. `pip check` and the resolved install manifest are saved.
+
+Returned job 165846 stopped during dependency resolution: a BLIS source build
+failed in Cython. No package-install step, dataset download or native acceptance
+check had run. The pasted traceback does not identify the selected BLIS version
+or why pip chose a source archive. The new recipe pins spaCy 3.7.5, thinc 8.2.5
+and blis 0.7.11, which publish CPython 3.12 Linux x86-64 wheels and whose wheel
+metadata permits the existing NumPy 1.26.4:
+[spaCy](https://pypi.org/project/spacy/3.7.5/#files),
+[thinc](https://pypi.org/project/thinc/8.2.5/#files),
+[BLIS](https://pypi.org/project/blis/0.7.11/#files).
+All dependencies must now use wheels except the source-only, pure-Python Gym
+0.24.0 release. The install plan independently rejects other source archives.
+Inherited `PIP_*` overrides are cleared before applying the preparation's own
+settings, so an unrelated source-build or index policy cannot change this recipe.
+
+The failed v1 venv and its ownership marker stay intact. The small v2 venv shares
+the same validated base package files and download cache; the already verified
+English model wheel is reused. This avoids bypassing v1's different requirements
+hash. Failed dependency logs now include resolver choices as well as the traceback
+tail, so the selected package versions remain visible in the returned summary.
 
 The selected source is supplied per job through `OMR_SOURCE_ROOT`. Ordinary Python
 children and a private Ray worker must report the dedicated venv and the selected

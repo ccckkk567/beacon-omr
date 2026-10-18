@@ -22,7 +22,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from experiments.omr.environment_scope import excluded_environment
 from experiments.omr.latest_checkpoint import atomic_json
-from experiments.omr.preparation import (canonical, file_identity, hf_token_from_file,
+from experiments.omr.preparation import (dependency_log_context, file_identity, hf_token_from_file,
                                          validate_install_plan, write_runtime_paths)
 
 
@@ -37,10 +37,10 @@ class Preparation:
         self.report = {'job_id': self.job, 'source_commit': self.commit, 'status': 'running',
                        'training_ready': False, 'test_only': True, 'steps': []}
         self.env = os.environ.copy()
-        for key in ('PYTHONPATH', 'PYTHONHOME', 'HF_TOKEN', 'HUGGING_FACE_HUB_TOKEN',
-                    'SWANLAB_API_KEY', 'WANDB_API_KEY', 'PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL',
-                    'PIP_TARGET', 'PIP_PREFIX', 'PIP_USER'):
-            self.env.pop(key, None)
+        for key in tuple(self.env):
+            if key.startswith('PIP_') or key in ('PYTHONPATH', 'PYTHONHOME', 'HF_TOKEN',
+                    'HUGGING_FACE_HUB_TOKEN', 'SWANLAB_API_KEY', 'WANDB_API_KEY'):
+                self.env.pop(key)
         self.env.update(OMR_SOURCE_ROOT=str(REPO), PYTHONDONTWRITEBYTECODE='1', PYTHONNOUSERSITE='1',
             HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1', HF_HUB_DISABLE_TELEMETRY='1',
             HF_HOME=str(self.work / 'downloads/beacon-omr/hf-cache'), TOKENIZERS_PARALLELISM='false',
@@ -119,7 +119,10 @@ class Preparation:
         requirements = REPO / 'experiments/omr/webshop-requirements.txt'
         owner = {'schema': 1, 'base_prefix': str(base),
                  'requirements_sha256': hashlib.sha256(requirements.read_bytes()).hexdigest()}
-        self.prefix = self.work / 'envs/beacon-omr-web-v1'
+        # v1 failed before installation with the old, unpinned BLIS recipe. Its
+        # ownership hash must not be bypassed or overwritten when changing that recipe.
+        # This small venv still shares the same base packages and asset/download cache.
+        self.prefix = self.work / 'envs/beacon-omr-web-v2'
         marker = self.prefix / 'OMR-RUNTIME.json'
         if self.prefix.is_symlink():
             raise ValueError('Dedicated runtime path must not be a symlink')
@@ -174,7 +177,7 @@ class Preparation:
         constraints.write_text(''.join(f"{p['name']}=={p['version']}\n" for p in current))
         requirements = REPO / 'experiments/omr/webshop-requirements.txt'
         plan_path = self.directory / 'install-plan.json'
-        command = [self.executable, '-I', '-B', '-m', 'pip', 'install', '--prefer-binary',
+        command = [self.executable, '-I', '-B', '-m', 'pip', 'install',
                    '--constraint', constraints, '-r', requirements, wheel]
         self.run('resolve-missing-packages', [*command, '--dry-run', '--report', plan_path], timeout=1800)
         selected = validate_install_plan(json.loads(plan_path.read_text()), current)
@@ -315,7 +318,11 @@ def main():
                 step = preparation.report['steps'][-1] if preparation.report['steps'] else {}
                 log = Path(step.get('log', '/nonexistent'))
                 if log.is_file():
-                    summary['log_tail'] = log.read_text(encoding='utf-8')[-6000:]
+                    output = log.read_text(encoding='utf-8')
+                    summary['log_tail'] = output[-6000:]
+                    if preparation.report.get('current_stage') in {
+                            'resolve-missing-packages', 'install-missing-packages'}:
+                        summary['dependency_context'] = dependency_log_context(output)
                 details = preparation.directory / (str(preparation.report.get('current_stage')) + '.json')
                 if details.is_file():
                     detail = json.loads(details.read_text())

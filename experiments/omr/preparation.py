@@ -5,6 +5,7 @@ import hashlib
 from pathlib import Path
 import re
 import shlex
+from urllib.parse import unquote, urlsplit
 
 
 def canonical(name):
@@ -66,7 +67,7 @@ def write_runtime_paths(site, base_site):
 
 
 def validate_install_plan(plan, existing):
-    """Refuse any replacement of already validated packages, even in the overlay."""
+    """Refuse base replacements and compiled source builds, even in the overlay."""
     installed = {canonical(row['name']): row['version'] for row in existing}
     selected = []
     for item in plan.get('install', []):
@@ -77,8 +78,29 @@ def validate_install_plan(plan, existing):
         if name.startswith(('torch', 'nvidia-', 'cuda-')) or name in {
                 'triton', 'vllm', 'ray', 'transformers', 'tensordict', 'flash-attn'}:
             raise ValueError(f'Training dependency download is outside this preparation: {name}')
+        url = item.get('download_info', {}).get('url', '')
+        filename = unquote(urlsplit(url).path).rsplit('/', 1)[-1]
+        # The only source-only exception in the WebShop profile is pure Python.
+        if not filename.endswith('.whl') and not (name == 'gym' and version == '0.24.0'
+                                                   and filename.endswith('.tar.gz')):
+            raise ValueError(f'Expected a prebuilt wheel for dependency: {name}')
         selected.append({'name': name, 'version': version})
     return selected
+
+
+def dependency_log_context(output):
+    """Keep resolver choices visible when a long compiler traceback hides them."""
+    lines = []
+    for line in output.splitlines():
+        stripped = line.strip()
+        if (stripped.startswith(('Collecting ', 'Downloading ', 'Using cached ',
+                                 'ERROR:', 'INFO: pip is looking', 'The conflict is caused by:',
+                                 'The user requested'))
+                or ' depends on ' in stripped
+                or stripped.startswith(('Installing build dependencies',
+                                         'Getting requirements to build wheel'))):
+            lines.append(line)
+    return '\n'.join(lines[-60:])[-10000:]
 
 
 def source_receipt(repo, prefix):

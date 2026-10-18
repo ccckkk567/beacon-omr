@@ -44,10 +44,27 @@ The targeted WebShop preparation is now implemented; see `WEBSHOP_PREPARATION.md
 It creates an independent venv reusing the ScienceWorld stack, downloads only pinned
 small-catalog/NLP assets, builds and checks Lucene, tests purchase/reset receipts,
 checks persistent Ray source imports, verifies/loads existing Qwen weights and
-exercises SwanLab offline logging. Its HPC result has not yet been returned.
-Local checks now cover 45 fixtures (44 passed; the Windows symlink fixture is
+exercises SwanLab offline logging.
+
+Returned preparation job **165846**, source `6546d98`, stopped at dependency
+resolution with a BLIS/Cython source-build error. Java/base checks, creation of the
+isolated v1 venv and retrieval/verification of the English model wheel completed;
+dependency installation, dataset/index preparation and subsequent native checks
+did not run. False acceptance flags in this report mean not yet verified, not
+additional simulator failures. The fix pins the spaCy/thinc/BLIS wheel combination
+and requires binary packages except pure-Python Gym. A small v2 venv reuses the
+same base/cache/assets while preserving v1's ownership marker. Its GPU retry is
+still pending; no formal training or optimizer update has run.
+
+Before this fix, local checks covered 45 fixtures (44 passed; the Windows symlink fixture is
 skipped), including persistent child-runtime isolation, rejection of dependency
 replacement, asset hash failures, native terminal/reset behavior and SDK naming.
+All eight targeted preparation fixtures now pass, including rejection of compiled
+source archives and preservation of dependency choices in long failure logs.
+A separate no-install pip resolution for CPython 3.12 / manylinux x86-64 selected
+42 wheels for the pinned spaCy/thinc/BLIS stack with NumPy 1.26.4; the real pip
+requirements parser also confirms binary-only BLIS/thinc and the Gym source
+exception. This checks the NLP wheel combination, not all installed HPC constraints.
 Submission scripts pass Bash syntax checking. These are not HPC acceptance results.
 
 ## Remaining implementation / acceptance

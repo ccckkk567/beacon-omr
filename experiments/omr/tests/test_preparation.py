@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import unittest
 import venv
 
-from experiments.omr.preparation import (file_identity, hf_token_from_file,
+from experiments.omr.preparation import (dependency_log_context, file_identity, hf_token_from_file,
                                          validate_install_plan, write_runtime_paths)
 
 REPO = Path(__file__).resolve().parents[3]
@@ -64,8 +64,35 @@ class PreparationTests(unittest.TestCase):
         for name in ('torch', 'numpy', 'nvidia-cublas-cu12', 'vllm'):
             with self.assertRaises(ValueError):
                 validate_install_plan({'install': [{'metadata': {'name': name, 'version': '99'}}]}, current)
-        accepted = validate_install_plan({'install': [{'metadata': {'name': 'pyserini', 'version': '0.17.0'}}]}, current)
+        accepted = validate_install_plan({'install': [{
+            'metadata': {'name': 'pyserini', 'version': '0.17.0'},
+            'download_info': {'url': 'https://fixture/pyserini-0.17.0-py3-none-any.whl'}}]}, current)
         self.assertEqual(accepted, [{'name': 'pyserini', 'version': '0.17.0'}])
+
+    def test_compiled_dependency_must_use_wheel_but_native_gym_may_build(self):
+        def plan(name, version, filename):
+            return {'install': [{'metadata': {'name': name, 'version': version},
+                                 'download_info': {'url': 'https://fixture/' + filename}}]}
+        with self.assertRaisesRegex(ValueError, 'prebuilt wheel'):
+            validate_install_plan(plan('blis', '0.7.11', 'blis-0.7.11.tar.gz'), [])
+        accepted = validate_install_plan(plan('blis', '0.7.11',
+            'blis-0.7.11-cp312-cp312-manylinux2014_x86_64.whl'), [])
+        self.assertEqual(accepted, [{'name': 'blis', 'version': '0.7.11'}])
+        accepted = validate_install_plan(plan('gym', '0.24.0', 'gym-0.24.0.tar.gz'), [])
+        self.assertEqual(accepted, [{'name': 'gym', 'version': '0.24.0'}])
+        with self.assertRaisesRegex(ValueError, 'prebuilt wheel'):
+            validate_install_plan(plan('gym', '99', 'gym-99.tar.gz'), [])
+
+    def test_dependency_context_retains_choices_before_long_compiler_error(self):
+        output = ('Collecting blis<0.8.0,>=0.7.8\n  Using cached blis-0.7.8.tar.gz (2 MB)\n'
+                  '  Installing build dependencies: started\n'
+                  + 'Cython compiler detail\n' * 1000
+                  + "ERROR: Failed to build 'blis' when getting requirements to build wheel\n")
+        context = dependency_log_context(output)
+        self.assertIn('blis-0.7.8.tar.gz', context)
+        self.assertNotIn('Cython compiler detail', context)
+        self.assertIn('ERROR:', context)
+        self.assertLess(len(context), 1000)
 
     def test_persistent_child_uses_source_and_packages_without_old_hooks(self):
         with tempfile.TemporaryDirectory() as directory:
