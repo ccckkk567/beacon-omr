@@ -10,8 +10,10 @@ Tunnel; the assistant cannot connect directly to Orion.
 Current user overrides to the execution specification:
 - Use SwanLab, with SWANLAB_API_KEY supplied only at runtime, instead of W&B.
 - Use Hugging Face for model/dataset downloads, with HF_TOKEN supplied at runtime.
-- Check and configure environments on GPU compute nodes. Pure downloads and
-  cloning may use CPU jobs. Never install packages on login nodes.
+- Check and configure environments on GPU compute nodes. Pure downloads may use
+  CPU jobs. While the CPU queue is unavailable, the user approved lightweight Git
+  clone/check on login, followed by direct GPU inventory submission. Keep large
+  asset downloads and package installation on compute nodes.
 - Prefer existing compatible environments/data/models. Do not mutate environments
   used by old experiments. Use the main assigned storage first; overflow storage
   is for large data/models when needed, never an unconditional duplicate.

@@ -5,7 +5,7 @@ The OMR implementation is in progress. **Do not launch the six formal runs yet.*
 ## Completed locally
 
 - Independent BEACON clone and experiment branch, pinned upstream provenance.
-- Public GitHub origin and first CPU-clone/GPU-inventory scripts.
+- Public GitHub origin and login-node Git clone/GPU-inventory submission script.
 - Common milestone/action/timing/padding fixes described in `SOURCE_AUDIT.md`.
 - Standalone archive, statistics, sampler, controller and payload store.
 - Standalone atomic latest-only checkpoint transaction with failure tests.
@@ -16,6 +16,10 @@ The OMR implementation is in progress. **Do not launch the six formal runs yet.*
 
 The user must execute the supplied Slurm inventory commands through their existing
 VS Code Tunnel and return the report. The assistant has no Orion connection.
+
+The submission helper now clones/checks the small code repository on the login
+node and submits inventory directly to `testqueue`, without an `ioqueue` job or
+CPU-job dependency. Environment imports and GPU checks still run inside Slurm.
 
 Environment setup/reuse decisions require the real GPU-node package/import paths,
 model assets, Java/JAR and available storage. Inventory does not install packages,
