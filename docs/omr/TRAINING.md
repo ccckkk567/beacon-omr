@@ -16,9 +16,11 @@ bash "$ROOT/code/beacon-omr/experiments/omr/submit_training.sh" \
 ```
 
 The script freezes a clean detached source checkout without touching the four
-modified files in the user's existing checkout. It submits array `0-2%1`:
+modified files in the user's existing checkout. It submits array `0-2%3`:
 0 ALFWorld, 1 WebShop, 2 ScienceWorld. Each element uses two H200, 32 CPUs, 256 GiB
-RAM and up to 18 hours on testqueue. Only one element runs at a time. Failure of
+RAM and up to 18 hours on testqueue. All three may run concurrently, using six
+H200 in total when resources are available; Slurm queues elements as needed.
+There is no dependency or prescribed start order between benchmarks. Failure of
 one element does not cancel the others. These are training jobs, with no separate
 environment, model, index or transport probe beforehand.
 
@@ -63,7 +65,9 @@ accepted Torch 2.6/vLLM 0.8.2 stack. For ALFWorld, simulator actors use the exis
 ALF package stack through Ray 2.48's per-actor Python option; no incompatible
 Torch/vLLM packages are mixed into the learner. Two small source-isolated venv
 wrappers reference the existing package files without executing old editable
-hooks. No package installation or asset download occurs in these launchers.
+hooks. Concurrent jobs lock only the short creation of their shared wrapper,
+then train independently. No package installation or asset download occurs in
+these launchers.
 
 Each logical run is under `analysis/beacon-omr/omr-v1-<benchmark>-baseline-s0`:
 

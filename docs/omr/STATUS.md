@@ -6,8 +6,9 @@ implemented.** Full OMR remains under integration and is explicitly rejected by
 the baseline launcher. No HPC optimizer update has been returned yet.
 
 See `TRAINING.md` for actual submission/resume commands. Each array element uses
-two H200 and trains one benchmark for 150 updates; elements run one at a time and
-fail independently. Fixed instance manifests, held-out validation, final three-seed
+two H200 and trains one benchmark for 150 updates; all three elements may run
+concurrently (six H200 total), subject to Slurm allocation, and fail independently.
+Fixed instance manifests, held-out validation, final three-seed
 test, explicit same-root groups, strict ScienceWorld success, online SwanLab,
 durable records and atomic full baseline checkpoint/resume are connected to the
 existing BEACON optimizer loop. The previous continuation job is superseded.

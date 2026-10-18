@@ -25,6 +25,9 @@ Current user overrides to the execution specification:
 - Stop separate readiness/probe rounds. Reuse accepted evidence and advance real
   training; essential protocol checks execute inside the training job. Begin the
   three baselines while completing OMR integration. Never label baseline as full.
+- Submit independent ready benchmark runs concurrently, with two H200 per run
+  (six H200 for all three). Let Slurm queue for available resources; do not impose
+  a one-at-a-time throttle or benchmark completion dependencies.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

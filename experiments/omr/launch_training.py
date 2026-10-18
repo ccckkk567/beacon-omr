@@ -17,15 +17,24 @@ from experiments.omr.preparation import write_runtime_paths
 
 
 def reused_runtime(root, name, base):
+    import fcntl
     prefix = root / 'envs' / name
     marker = prefix / 'OMR-reuse.json'
     expected = {'schema': 1, 'base': str(base), 'site': str(base / 'lib/python3.12/site-packages')}
-    if not prefix.exists():
-        subprocess.run([str(base / 'bin/python'), '-I', '-S', '-m', 'venv', '--without-pip', str(prefix)], check=True)
-        write_runtime_paths(prefix / 'lib/python3.12/site-packages', expected['site'])
-        atomic_json(marker, expected)
-    elif not marker.is_file() or json.loads(marker.read_text()) != expected:
-        raise RuntimeError('Runtime ownership/binding differs: ' + str(prefix))
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+    # ALFWorld and ScienceWorld can start together and share this wrapper.
+    # Lock only its short initialization; training remains independent.
+    with (prefix.parent / f'.{name}.lock').open('a+') as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            if not prefix.exists():
+                subprocess.run([str(base / 'bin/python'), '-I', '-S', '-m', 'venv', '--without-pip', str(prefix)], check=True)
+                write_runtime_paths(prefix / 'lib/python3.12/site-packages', expected['site'])
+                atomic_json(marker, expected)
+            elif not marker.is_file() or json.loads(marker.read_text()) != expected:
+                raise RuntimeError('Runtime ownership/binding differs: ' + str(prefix))
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     return prefix
 
 

@@ -7,7 +7,7 @@ REV="${3:?Pass the full published source revision}"
 SELECT="${4:-all}"
 [[ "$REV" =~ ^[0-9a-f]{40}$ ]]
 case "$SELECT" in
-  all) ARRAY='0-2%1' ;;
+  all) ARRAY='0-2%3' ;;
   alfworld) ARRAY=0 ;;
   webshop) ARRAY=1 ;;
   scienceworld) ARRAY=2 ;;
