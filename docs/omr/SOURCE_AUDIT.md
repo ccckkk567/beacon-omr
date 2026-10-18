@@ -17,14 +17,15 @@ This checkout was cloned from Git, not imported from the ZIP.
 | ScienceWorld shared split mutation | `sciworld/envs.py:207` copies kwargs before split extraction | Explicit train/dev/test manifests and actual load receipts still require integration |
 | Reset score incorrectly zero | `sciworld/envs.py:157` uses reset score as `prev_score`; preserves reference reward formula | Strict completion predicate must be established from installed JAR/package |
 | WebShop worker-specific goals | `webshop/envs.py:40` separates fixed manifest seed from worker seed, seeds complete price/goal construction, records actual goal content identity | Need live all-worker digest and actual split overlap checks; integer indexes alone are not acceptance evidence |
-| WebShop terminal session lost | Native text step preserves a copied purchase receipt and defers reset; explicit reset discards the previous mutable session | Local regression passes; the targeted GPU preparation checks real search/click/purchase/reset |
-| WebShop assets tied to checkout | Environment construction accepts explicit shared product/attribute/human-attribute/index paths | Small-catalog data and one Lucene index are prepared outside Git; native acceptance pending |
+| WebShop terminal session lost | Native text step preserves a copied purchase receipt and defers reset; explicit reset discards the previous mutable session | Native search/click/purchase/reset passed in GPU jobs 165860 and 165873 |
+| WebShop assets tied to checkout | Environment construction accepts explicit shared product/attribute/human-attribute/index paths | Small-catalog data and one Lucene index prepared outside Git; reuse passed in GPU job 165873 |
 | Physical batch reorder changed segments | `migpo/core_migpo.py:38` sorts by local step, precomputes segment IDs, passes them into advantages | Exact numerical permutation fixtures pass |
 | Padding altered group evidence | `multi_turn_rollout/utils.py:100,129` marks copies; MiGPO excludes copies, trainer/actor masks their policy/KL/entropy contributions | Numerical advantage fixture passes; distributed optimizer equivalence remains a GPU acceptance item |
 | Restarts could re-award prefix milestones | `match_milestones` accepts initial offset; reward and advantage share precomputed segments | Offset fixture passes; real restart adapters are not integrated yet |
 | Destructor could mark failed jobs successful | `verl/utils/tracking.py:117`, `main_ppo.py` explicitly finish with real exit status | SwanLab simulated SDK fixture passes; installed SDK and remote metric read-back pending |
 | WebShop debug file collisions | `migpo/webshop_milestone_detector.py:98` uses process + UUID; run log directory can be supplied | Detection logic unchanged; verbose volume tuning pending |
 | Ray overrode thread controls | `main_ppo.py` passes one OMP/MKL thread and disables tokenizer parallelism | Actual Ray worker resource validation pending |
+| WebShop lacks explicit continuing-state restoration | Opt-in worker task/replay API verifies native state, RNG, detector and manager input history; ordinary reset/step remains available | Local replay tests pass; native continuation GPU probe and trainer integration pending |
 
 ## Algorithm components implemented, not yet connected to the rollout loop
 

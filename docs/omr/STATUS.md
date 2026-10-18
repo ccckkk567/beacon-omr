@@ -32,8 +32,8 @@ request, AppWorld installations are now excluded from inventory, candidate reuse
 WebShop environment discovery and probe execution. Old reports are retained as
 historical evidence, not as a request to repair or test AppWorld.
 
-The next preparation targets missing WebShop dependencies and its HF-hosted assets,
-using the already validated ScienceWorld stack as the dependency base. The committed
+The WebShop preparation used the already validated ScienceWorld stack as its
+dependency base. The committed
 WebShop profile uses `use_small=true` (1,000 products); this is the upstream profile,
 not an instruction to download the full catalog. Preparation and checks run on GPU
 compute nodes. Preserve the existing ALFWorld/ScienceWorld evidence without rerunning
@@ -46,7 +46,23 @@ small-catalog/NLP assets, builds and checks Lucene, tests purchase/reset receipt
 checks persistent Ray source imports, verifies/loads existing Qwen weights and
 exercises SwanLab offline logging.
 
-Latest returned preparation **165860**, source `71f4083`, passed package
+Latest returned preparation **165873**, source `b019cfc`, completed with
+`prepared_and_tested` and no error. Native WebShop interaction, Ray imports,
+existing pinned model weight loading with BF16/FlashAttention, and real SwanLab
+offline logging passed. The stage list confirms that the v3 environment and index
+were reused. Online SwanLab remains unverified. This is preparation acceptance,
+not an optimizer update or a complete training-readiness result.
+
+The next bounded GPU job checks WebShop mid-episode replay and online SwanLab
+upload/readback without installing packages, downloading assets, building an index
+or reloading the policy model. The replay adapter uses explicit content-bound tasks,
+executes the real command prefix and verifies every transition plus final session,
+browser, detector, native RNG and manager input history. A fresh rollout receives
+15 new actions. Its local tests include recursive prefixes, independent state,
+corruption, live divergence and terminal exclusion. See `CONTINUATION_CHECKS.md`.
+These APIs are not yet connected to trainer group planning/archive admission.
+
+Earlier preparation **165860**, source `71f4083`, passed package
 installation, preserved-package checks, `pip check`, WebShop dependencies, HF
 catalog preparation, Lucene build/catalog checks, native search/click/purchase/reset
 and Ray source provenance. It stopped in the monitoring adapter: SwanLab 0.10.2's
@@ -62,8 +78,8 @@ local Windows environment: both normal and intentional-failure attempts initiali
 write metrics, retain run IDs with null URLs, and finish with the expected status.
 This is an offline SDK check, not GPU or online acceptance. Runtime requirements
 and both index-provenance source files are unchanged, so the retry
-reuses the prepared v3 environment, pinned assets and existing index. The GPU
-monitoring/model-load retry and online monitoring verification remain pending.
+reuses the prepared v3 environment, pinned assets and existing index. GPU retry
+165873 passed; online monitoring verification remains pending.
 
 Returned preparation job **165846**, source `6546d98`, stopped at dependency
 resolution with a BLIS/Cython source-build error. Java/base checks, creation of the
@@ -104,8 +120,8 @@ Submission scripts pass Bash syntax checking. These are not HPC acceptance resul
 
 ## Remaining implementation / acceptance
 
-1. Complete the SwanLab and existing-model load checks using the prepared runtime
-   and assets. Preserve the returned ALFWorld/ScienceWorld/WebShop evidence.
+1. Verify real WebShop continuation and SwanLab online readback using the prepared
+   runtime. Preserve the accepted ALFWorld/ScienceWorld/WebShop and model evidence.
 2. Implement native per-environment restart adapters and explicit task manifests;
    integrate same-start groups, history/detector state and H new actions.
 3. Connect controller commits, complete records, cost ledger, atomic checkpoint and
@@ -134,3 +150,7 @@ python -m compileall -q agent_system/milestone_reuse experiments/omr migpo
 
 Tests require NumPy/Torch for numerical BEACON fixtures; simulator/Ray imports are
 not required. The inventory is standard-library-only and runs on the GPU node.
+
+After the continuation changes, the complete local suite ran 62 tests: 61 passed
+and the Windows symlink fixture was skipped. Both new submission scripts pass
+Bash syntax checks. No returned GPU continuation or online readback result yet.

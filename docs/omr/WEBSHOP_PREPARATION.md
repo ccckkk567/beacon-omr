@@ -135,6 +135,10 @@ The same monitoring function passed normal and intentional-failure attempts with
 real SwanLab 0.10.2 in an isolated local Windows runtime; GPU and online acceptance
 remain separate.
 
+Retry 165873 at `b019cfc` subsequently passed all preparation stages, including
+real GPU model loading and SwanLab offline logging. Its accepted `site.json` is
+reused by the next restore/online check described in `CONTINUATION_CHECKS.md`.
+
 Raw logs and full `report.json` stay in the private evidence directory. A compact
 summary is printed to the Slurm log; `site.json` is emitted only when all preparation
 checks pass. `training_ready` stays false until integrated OMR, two-GPU updates,

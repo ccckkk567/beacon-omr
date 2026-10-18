@@ -55,8 +55,57 @@ class WebshopWorker:
         # MIGPO: 里程碑检测器相关
         self.milestone_detector = None
         self.prev_obs = None
+        self.restart_adapter = None
+
+    def get_restart_adapter(self):
+        from pathlib import Path
+        import hashlib
+        from .restart import WebshopRestartAdapter, plain
+        from agent_system.milestone_reuse.types import content_id
+        if not hasattr(self, '_restart_profile'):
+            env = self.env.unwrapped
+            root = Path(__file__).resolve().parents[4]
+            paths = ['agent_system/environments/env_package/webshop/envs.py',
+                     'agent_system/environments/env_package/webshop/restart.py',
+                     'migpo/webshop_milestone_detector.py']
+            native = root / 'agent_system/environments/env_package/webshop/webshop/web_agent_site'
+            source_files = [root / path for path in paths]
+            source_files += sorted(native.rglob('*.py')) + sorted(native.rglob('*.html'))
+            index = Path(env.kwargs['index_path'])
+            if not (index / 'OMR-index-manifest.json').is_file():
+                raise RuntimeError('Restart tasks require the prepared index provenance manifest')
+            self._restart_profile = content_id(plain({
+                'products': env.server.product_item_dict, 'prices': env.server.product_prices,
+                'index': {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                          for path in sorted(index.iterdir()) if path.is_file()},
+                'mode': env.observation_mode, 'show_attrs': env.server.show_attrs,
+                'num_prev_obs': env.num_prev_obs, 'num_prev_actions': env.num_prev_actions,
+                'sources': {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+                            for path in source_files}}))
+        return WebshopRestartAdapter(self, self._restart_profile)
+
+    def get_task_manifest(self):
+        from dataclasses import asdict
+        return {split: [asdict(task) for task in tasks]
+                for split, tasks in self.get_restart_adapter().manifest.items()}
+
+    def reset_task(self, task, assignment_token):
+        return self.get_restart_adapter().reset_task(task, assignment_token)
+
+    def restore_start(self, payload, assignment_token, new_rollout_horizon):
+        return self.get_restart_adapter().restore(payload, assignment_token, new_rollout_horizon)
+
+    def capture_start(self, manager_state):
+        if self.restart_adapter is None:
+            raise RuntimeError('Explicit task initialization is required before capture')
+        return self.restart_adapter.capture_state(manager_state)
     
     def step(self, action):
+        if self.restart_adapter is not None:
+            return self.restart_adapter.step(action)
+        return self._step_native(action)
+
+    def _step_native(self, action):
         """Execute a step in the environment"""
         obs, reward, done, info = self.env.step(action)
         info = dict(info or {})  # make a *copy* so we can mutate safely
@@ -96,6 +145,7 @@ class WebshopWorker:
     
     def reset(self, idx):
         """Reset the environment with given session index"""
+        self.restart_adapter = None
         obs, info = self.env.reset(session=idx)
         info = dict(info or {})
         info['available_actions'] = self.env.get_available_actions()
