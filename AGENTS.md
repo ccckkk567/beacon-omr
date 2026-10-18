@@ -17,6 +17,9 @@ Current user overrides to the execution specification:
 - Prefer existing compatible environments/data/models. Do not mutate environments
   used by old experiments. Use the main assigned storage first; overflow storage
   is for large data/models when needed, never an unconditional duplicate.
+- Check only ALFWorld, WebShop and ScienceWorld. Do not inspect or probe AppWorld
+  environments, including as a candidate dependency base. The user explicitly
+  excluded those installations from further checks.
 - Keep local site paths and all credentials outside Git. Do not print credentials
   or a complete environment-variable dump.
 

@@ -14,25 +14,31 @@ The OMR implementation is in progress. **Do not launch the six formal runs yet.*
   Source compilation and submission-script syntax checks passed. The follow-up
   job reruns these fixtures in the existing HPC stack; GPU acceptance is separate.
 
-## Current external dependency
+## Returned GPU evidence and next dependency
 
-The user returned inventory job 165833: two H200 GPUs are visible and existing
-ScienceWorld/AppWorld dependency stacks are candidates for reuse. See
-`SITE_PREPARATION.md` for evidence and limits. The assistant has no Orion connection.
+The user returned preflight job **165837**, using frozen source `f7ccbe7`:
 
-The submission helper now clones/checks the small code repository on the login
-node and submits inventory directly to `testqueue`, without an `ioqueue` job or
-CPU-job dependency. Environment imports and GPU checks still run inside Slurm.
+- ALFWorld and ScienceWorld source imports, GPU math and FlashAttention passed.
+- Native ALFWorld reset/action replay and ScienceWorld reset/action replay passed.
+  ALFWorld has 3,553 eligible train gamefiles with matching milestone identities.
+- Two-process NCCL passed in the ScienceWorld runtime; all 36 core fixtures passed.
+- The existing Qwen2.5-1.5B-Instruct tokenizer loaded. Full model revision/hash and
+  weight loading still need acceptance; no replacement model download is needed.
+- WebShop dependency checks failed, and the bounded asset scan found no complete
+  product/attribute/human-attribute/index binding. Native interaction has not run.
 
-Environment setup/reuse decisions require the real GPU-node package/import paths,
-model assets, Java/JAR and available storage. Inventory does not install packages,
-load a large model, read credential values, or modify old experiments.
+The experiment scope is **ALFWorld, WebShop and ScienceWorld only**. At the user's
+request, AppWorld installations are now excluded from inventory, candidate reuse,
+WebShop environment discovery and probe execution. Old reports are retained as
+historical evidence, not as a request to repair or test AppWorld.
 
-The next command submits `preflight.sbatch` for symlink-aware asset discovery,
-isolated package/source imports, GPU kernels and NCCL, and bounded test-only native
-simulator interactions. Its returned report is needed before finalizing reuse.
-WebShop now has explicit project-local environment discovery, dependency imports,
-and real reset/search/click checks when an existing complete asset binding is found.
+The next preparation targets missing WebShop dependencies and its HF-hosted assets,
+using the already validated ScienceWorld stack as the dependency base. The committed
+WebShop profile uses `use_small=true` (1,000 products); this is the upstream profile,
+not an instruction to download the full catalog. Preparation and checks run on GPU
+compute nodes. Preserve the existing ALFWorld/ScienceWorld evidence without rerunning
+it merely because the candidate list changed. See `SITE_PREPARATION.md` for limits.
+The assistant has no Orion connection; the user executes remote jobs via Tunnel.
 
 ## Remaining implementation / acceptance
 

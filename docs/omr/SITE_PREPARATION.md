@@ -1,13 +1,36 @@
 # Site preparation evidence — 2026-10-18
 
+## Latest returned evidence: job 165837
+
+Frozen-worktree submission succeeded at `f7ccbe7`. ALFWorld and ScienceWorld passed
+source/import and GPU-kernel checks plus bounded native reset/action replay. The
+ScienceWorld runtime passed two-rank NCCL and all 36 core fixtures. An existing
+Qwen2.5-1.5B-Instruct installation was found and its tokenizer loaded; weights have
+not yet been loaded or verified against the HF revision. ALFWorld has 3,553 eligible
+train gamefiles, all with matching keys in the bundled milestone file.
+
+WebShop remains blocked: none of the tested installations had all native dependencies,
+and no adjacent data/attribute/human-attribute/Lucene-index set was found in the
+selected scan roots. The scan completed within its bounds with no reported errors.
+The next step is targeted WebShop preparation, preserving the upstream
+`use_small=true` profile (1,000 products). This does not require another broad scan.
+
+The user explicitly excluded AppWorld from further checks. Environment discovery,
+inventory selection and probe launching now skip its installations and aliases.
+Do not repair its SwanLab check, use it as a dependency base, or add a fourth
+benchmark. Reuse candidates for further work are the relevant ALFWorld and
+ScienceWorld installations only. Historical report data remains private and intact.
+
+## Initial inventory: job 165833
+
 The user returned GPU inventory job **165833**, run from commit `3510627` on
 `testqueue`. The raw report is retained privately, outside version control. This
 is inventory evidence, not permission to launch the formal six runs.
 
 ## Confirmed
 
-- Two NVIDIA H200 GPUs were allocated, with driver 580.126.20. Existing ALFWorld,
-  ScienceWorld and AppWorld environments see both devices through Torch.
+- Two NVIDIA H200 GPUs were allocated, with driver 580.126.20. Existing ALFWorld
+  and ScienceWorld environments see both devices through Torch.
 - The main and overflow locations are writable. The reported main filesystem has
   approximately 737 GiB free; user/project quota remains unverified.
 - A credential file exists and is readable; its contents were not read by the
@@ -18,11 +41,10 @@ is inventory evidence, not permission to launch the formal six runs.
 | Existing environment | Relevant installed packages | Decision before runtime checks |
 | --- | --- | --- |
 | `gigpo-scienceworld-py312-v1` | Python 3.12.5, Torch 2.6.0/CUDA 12.4, vLLM 0.8.2, Transformers 4.51.1, TensorDict 0.6.2, ScienceWorld 1.2.3, SwanLab 0.10.2 | First candidate for ScienceWorld package reuse; do not downgrade solely because README mentions Python 3.10 |
-| `gigpo-appworld-py312-v1` | Python 3.12.5, Torch 2.6.0/CUDA 12.4, vLLM 0.8.5, Transformers 4.51.1, TensorDict 0.6.2 | Candidate dependency base; ALFWorld/ScienceWorld packages absent |
 | `gigpo-alfworld-py312-v1` | Python 3.12.5, Torch 2.8.0/CUDA 12.8, vLLM 0.11.0, Transformers 4.57.3, TensorDict 0.10.0, ALFWorld 0.4.2/TextWorld 1.7.0 | Reuse simulator assets if validated; policy stack differs from BEACON's declared constraints |
 | `dep-prep-py312-v1` | Actual Python 3.14.6, no Torch | Name is not evidence of Python version or readiness |
 
-The three ML environments passed their existing `pip check`. This checks installed
+The relevant ML environments passed their existing `pip check`. This checks installed
 distribution metadata; it does not establish compatibility with the new checkout.
 No environment in the first inventory reports Pyserini or legacy Gym. This does
 not rule out a virtual environment inside an old project; the follow-up now scans
@@ -48,7 +70,7 @@ and records depth/entry/time limits and errors. It reports config/tokenizer/shar
 presence, ALF logic and gamefile counts, milestone key coverage, and WebShop files
 and index directories. Counts are discovery evidence, not formal task manifests.
 
-## Next GPU job
+## Diagnostic job design (already executed as 165837)
 
 `submit_preflight.sh` submits one two-H200 job to `testqueue` using the previous
 inventory JSON as input. It does not install packages, download models, read keys,
@@ -62,7 +84,7 @@ ScienceWorld step source, native completion status, score and JVM cleanup. No go
 actions are requested. An available Qwen tokenizer is read offline as a loader
 check; this does not select or certify the required model revision.
 
-WebShop is now included explicitly. Every discovered interpreter gets real
+WebShop is included explicitly. Each in-scope discovered interpreter gets real
 dependency imports, including Gym, Pyserini/JNI, spaCy's `en_core_web_sm`, and the
 vendored simulator. A complete adjacent product/attribute/human-attribute/index
 layout is required before interaction. Optional explicit native asset paths allow
@@ -93,13 +115,13 @@ the frozen revision and clean state in that new directory before submitting all
 three environments' checks. Worktrees use the same Git object store and existing
 external model/data paths; models and datasets are not copied.
 
-The local suite has 35 passing tests and one symlink fixture skipped because the
-Windows process cannot create that link. The follow-up job also reruns the core
-fixtures in the existing HPC dependency stack, including that symlink test.
+The preflight source's local suite had 35 passing tests and one symlink fixture
+skipped because the Windows process cannot create that link. Returned job 165837
+passed all 36, including the Linux symlink fixture.
 
 Failed checks remain failed in the JSON; simulator fixture results do not enter
 training archives. Local tests do not establish that this GPU job has passed.
-Formal readiness still requires returned native interaction evidence, exact model
+Formal readiness still requires native WebShop interaction evidence, exact model
 provenance, complete task manifests, integrated restart adapters, actual policy updates,
 checkpoint/resume, and SwanLab upload/readback.
 

@@ -14,6 +14,8 @@ import shutil
 import subprocess
 import time
 
+from experiments.omr.environment_scope import excluded_environment
+
 
 def command(argv, timeout=45):
     try:
@@ -26,7 +28,7 @@ def command(argv, timeout=45):
 
 def bounded_files(root, max_depth=6, limit=30000):
     root = Path(root)
-    if not root.is_dir():
+    if excluded_environment(root) or not root.is_dir():
         return
     seen = 0
     for base, dirs, files in os.walk(root, followlinks=False):
@@ -34,7 +36,8 @@ def bounded_files(root, max_depth=6, limit=30000):
         if len(rel.parts) >= max_depth:
             dirs[:] = []
         dirs[:] = sorted(d for d in dirs if d not in {
-            ".git", "__pycache__", "site-packages", "node_modules", "blobs"})
+            ".git", "__pycache__", "site-packages", "node_modules", "blobs"}
+            and not excluded_environment(Path(base) / d))
         for name in sorted(files):
             seen += 1
             if seen > limit:
@@ -104,6 +107,8 @@ def inspect_site(work_root, extra_storage):
             # Include explicit environment aliases without recursively following
             # arbitrary symlink trees.
             for prefix in base.iterdir():
+                if excluded_environment(prefix):
+                    continue
                 executable = prefix / 'bin/python'
                 if executable.is_file():
                     candidates.add(executable)
@@ -111,6 +116,8 @@ def inspect_site(work_root, extra_storage):
             if path.name == "python" and path.parent.name == "bin":
                 candidates.add(path)
     for path in sorted(candidates):
+        if excluded_environment(path):
+            continue
         result = command([str(path), "-c", PROBE], timeout=90)
         report["environments"].append({"prefix": str(path.parent.parent), "probe": result,
                                        "pip_check": command([str(path), "-m", "pip", "check"], timeout=60)})

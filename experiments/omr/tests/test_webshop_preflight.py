@@ -23,7 +23,10 @@ class WebshopPreflightTests(unittest.TestCase):
             nested = prefix / 'lib/should-not-scan/bin'
             nested.mkdir(parents=True)
             (nested / 'python').touch()
-            found = discover_prefixes(root, {'environments': []})
+            excluded = root / 'envs/gigpo-appworld-py312-v1'
+            (excluded / 'bin').mkdir(parents=True)
+            (excluded / 'bin/python').touch()
+            found = discover_prefixes(root, {'environments': [{'prefix': str(excluded)}]})
             self.assertEqual(found['prefixes'], [str(prefix)])
 
     def test_missing_assets_are_not_paired_with_another_projects_index(self):

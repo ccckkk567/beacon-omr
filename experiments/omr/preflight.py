@@ -14,6 +14,7 @@ import subprocess
 import time
 
 from experiments.omr.assets import inspect_assets
+from experiments.omr.environment_scope import excluded_environment
 from experiments.omr.webshop_probe import bindings, discover_prefixes
 
 
@@ -24,6 +25,8 @@ def write_json(path, value):
 def candidates(inventory):
     result = []
     for entry in inventory['environments']:
+        if excluded_environment(entry['prefix']):
+            continue
         try:
             probe = json.loads(entry['probe']['stdout'])
         except (KeyError, ValueError):
@@ -46,6 +49,8 @@ def asset_roots(work, extra):
             if project.name == 'gigpo-reproduction' and project.is_dir():
                 projects.extend(sorted(project.iterdir()))
         for project in projects:
+            if excluded_environment(project):
+                continue
             for relative in ('agent_system/environments/env_package/webshop/webshop',
                              'webshop', 'WebShop'):
                 for folder in ('data', 'search_engine'):
@@ -61,6 +66,8 @@ class ProbeRunner:
         self.counter = 0
 
     def start(self, prefix, mode, payload):
+        if excluded_environment(prefix):
+            raise ValueError('AppWorld environments are outside the user-selected scope')
         self.counter += 1
         name = f'{self.counter:02d}-{mode}'
         input_path, output = self.directory / (name + '-input.json'), self.directory / (name + '.json')

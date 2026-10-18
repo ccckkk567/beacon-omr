@@ -8,7 +8,8 @@ import unittest
 from unittest.mock import patch
 
 from experiments.omr.assets import inspect_assets, walk_metadata
-from experiments.omr.preflight import candidates
+from experiments.omr.preflight import ProbeRunner, candidates
+from experiments.omr.inventory import bounded_files
 from experiments.omr.runtime_probe import execute
 
 
@@ -74,8 +75,28 @@ class ProbeTests(unittest.TestCase):
         data = {'environments': [
             {'prefix': 'misleading-py312', 'probe': {'stdout': json.dumps({'python': '3.14', 'packages': {'torch': None}})}},
             {'prefix': 'working', 'probe': {'stdout': json.dumps({'python': '3.12', 'packages': {'torch': '2.6.0'}})}},
+            {'prefix': 'gigpo-appworld-py312-v1', 'probe': {'stdout': json.dumps({'python': '3.12', 'packages': {'torch': '2.6.0'}})}},
             {'prefix': 'broken', 'probe': {'stdout': 'traceback'}}]}
         self.assertEqual([row['prefix'] for row in candidates(data)], ['working'])
+
+    def test_appworld_is_excluded_before_any_probe_process_starts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runner = ProbeRunner(REPO, Path(directory))
+            with patch('experiments.omr.preflight.subprocess.Popen') as launch:
+                with self.assertRaisesRegex(ValueError, 'outside'):
+                    runner.start('/envs/gigpo-AppWorld-py312-v1', 'stack', {})
+                launch.assert_not_called()
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_inventory_skips_excluded_environment_tree(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ('gigpo-appworld-py312-v1', 'gigpo-scienceworld-py312-v1'):
+                target = Path(directory) / name / 'bin'
+                target.mkdir(parents=True)
+                (target / 'python').touch()
+            found = list(bounded_files(directory))
+            self.assertEqual(len(found), 1)
+            self.assertIn('scienceworld', str(found[0]))
 
     def test_nested_failure_is_not_reported_as_pass(self):
         good, bad = {'status': 'passed'}, {'status': 'failed'}

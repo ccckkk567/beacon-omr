@@ -8,6 +8,8 @@ from pathlib import Path
 import sys
 import time
 
+from experiments.omr.environment_scope import excluded_environment
+
 
 DEPENDENCIES = {
     'torch': 'torch', 'gym': 'gym', 'ray': 'ray', 'omegaconf': 'omegaconf',
@@ -25,6 +27,8 @@ def discover_prefixes(work, inventory, *, max_directories=4000, seconds=30):
     found, visited = {}, set()
     for item in inventory['environments']:
         prefix = Path(item['prefix'])
+        if excluded_environment(prefix):
+            continue
         if (prefix / 'bin/python').is_file():
             found[str(prefix.resolve())] = str(prefix)
     queue = deque([(Path(work) / 'envs', 0), (Path(work) / 'code', 0)])
@@ -37,6 +41,8 @@ def discover_prefixes(work, inventory, *, max_directories=4000, seconds=30):
             break
         path, depth = queue.popleft()
         try:
+            if excluded_environment(path):
+                continue
             if not path.is_dir():
                 continue
             identity = str(path.resolve())
@@ -93,7 +99,7 @@ def bindings(assets):
             missing.append('index_segments')
         result.append({'paths': {name: str(path) for name, path in paths.items()},
                        'num_products': count, 'missing': missing,
-                       'profile': 'full' if count is None else '1000-product fixture only',
+                       'profile': 'full catalog' if count is None else 'BEACON use_small=true (1000 products)',
                        'index_provenance_verified': False})
     return sorted(result, key=lambda row: (bool(row['missing']), row['num_products'] is not None, row['paths']['file_path']))
 
