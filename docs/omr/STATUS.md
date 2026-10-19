@@ -2,6 +2,30 @@
 
 ## Latest ScienceWorld evidence and startup diagnostics
 
+The latest returned queue confirms formal baseline **166362_2 at 1:01:51** and
+full **166362_5 at 16:44**, both still `starting` at c193e61 with **no complete
+checkpoint**. Old smoke **166370_2/5** is RUNNING at 14:43 on GDS9B74; resumes
+**166514_2/166517_5** are pending. The attempt to read Ray logs in step
+166362.2 timed out before launch; no Ray scheduler state was obtained.
+
+Recovery now uses `recover_scienceworld.py`, targeting only those six IDs.
+It validates ownership, original script/source and array index before cancelling
+continuations, smoke and then formal parents. It distinguishes retained terminal
+records from active/COMPLETING states, checks for optimizer/checkpoint evidence
+before and after cancellation, and verifies the old writer locks are released.
+It preserves all attempts/files and records the transition. Any new progress
+blocks a source change. New submission uses the existing quota-safe journal:
+two independent one-hour smoke and two 18-hour formal arms, plus one 18-hour
+continuation per formal arm. All freeze training source **fdbf5569b82d9c1afd1ad2578c914adf00d0f417**,
+which includes self-reported startup stages/stacks. No recovered job IDs or GPU
+results have been returned yet; the original startup root cause remains unknown.
+
+The same queue confirms WebShop smoke **166697_1/4**, formal **166698_1/4**,
+resumes **166699_1/166700_4**, and the existing repaired ALFWorld jobs. Recovery
+preserves them. **19 local controller/startup tests passed**, covering exact
+cancellation scope/order, terminal retention, completing state, progress races,
+writer locks, wrong source binding, quota retries and per-arm dependencies.
+
 At **11:54:29 +08**, the diagnostic step on H64Y574 ran successfully. Full
 TaskRunner **2268434** was alive (RNl, elapsed 08:13, CPU 1.5%, RSS 941192 KiB).
 `py-spy` was denied permission; no stack was collected and no elevated access

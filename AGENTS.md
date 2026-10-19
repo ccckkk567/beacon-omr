@@ -129,6 +129,22 @@ Current user overrides to the execution specification:
   New-source startup diagnostics record stages and self-dump stacks every 180
   seconds during a slow initialization stage, stopping before trainer.fit.
   They do not hot-patch current frozen jobs or establish a training-root-cause fix.
+- The subsequent read-only Ray-log step 166362.2 could not start before the
+  caller's 60-second timeout. Stop repeating srun/ptrace diagnostics. The next
+  returned queue confirms formal ScienceWorld 166362_2 RUNNING at 1:01:51 and
+  166362_5 RUNNING at 16:44; both shared progress files still say starting at
+  c193e61 and both lack complete checkpoints. Old ScienceWorld smoke 166370_2/5
+  is RUNNING at 14:43 on GDS9B74; resumes 166514_2/166517_5 are pending.
+  Prepare replacement of only these six ScienceWorld jobs with the journaled
+  recover_scienceworld.py controller. It checks exact ownership/source bindings,
+  no optimizer/checkpoint evidence before and after cancellation, terminal vs
+  COMPLETING states and released writer locks before any replacement submission.
+  Both arms use training revision fdbf5569b82d9c1afd1ad2578c914adf00d0f417:
+  one-hour smoke pair, independent 18-hour formal pair, own-parent 18-hour resumes.
+  Retain all earlier attempt/log files. This is an observable real-training
+  restart, not a confirmed fix for the unknown stall. New IDs are not returned.
+  The same queue confirms WebShop smoke 166697_1/4, formal 166698_1/4, resumes
+  166699_1/166700_4; preserve these along with all repaired ALFWorld jobs.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
