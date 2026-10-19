@@ -8,12 +8,9 @@ from collections import defaultdict
 from ast import literal_eval
 from decimal import Decimal
 
-import cleantext
 from tqdm import tqdm
-from rank_bm25 import BM25Okapi
 from flask import render_template_string
 from rich import print
-from pyserini.search.lucene import LuceneSearcher
 
 from web_agent_site.utils import (
     BASE_DIR,
@@ -192,7 +189,11 @@ def generate_product_prices(all_products):
     return product_prices
 
 
-def init_search_engine(num_products=None, index_path=None):
+def init_search_engine(num_products=None, index_path=None, lightweight=False):
+    if lightweight:
+        from web_agent_site.engine.lucene import LuceneTextSearcher as LuceneSearcher
+    else:
+        from pyserini.search.lucene import LuceneSearcher
     if index_path is not None:
         return LuceneSearcher(os.fspath(index_path))
     if num_products == 100:
@@ -245,13 +246,11 @@ def load_products(filepath, attrpath, num_products=None, human_goals=True, human
     #     all_reviews[r['asin']] = r['reviews']
     #     all_ratings[r['asin']] = r['average_rating']
 
+    with open(attrpath) as f:
+        attributes = json.load(f)
     if human_goals:
         with open(human_attr_path) as f:
             human_attributes = json.load(f)
-    with open(attrpath) as f:
-        attributes = json.load(f)
-    with open(human_attr_path) as f:
-        human_attributes = json.load(f)
     print('Attributes loaded.')
 
     asins = set()

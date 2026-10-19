@@ -31,7 +31,7 @@ class WebshopWorker(RestartWorkerMixin):
     Each actor hosts a *WebAgentTextEnv* instance.
     """
     
-    def __init__(self, seed, env_kwargs):
+    def __init__(self, seed, env_kwargs, static_catalog=None):
         # Lazy import avoids CUDA initialisation issues
         import sys
         import os
@@ -41,6 +41,15 @@ class WebshopWorker(RestartWorkerMixin):
         from web_agent_site.envs import WebAgentTextEnv  # noqa: WPS433 (runtime import)
 
         env_kwargs = deepcopy(env_kwargs)
+        if static_catalog is not None:
+            from .shared import settings
+            if static_catalog['binding'] != settings(env_kwargs):
+                raise ValueError('Shared WebShop preparation settings differ')
+            env_kwargs['prepared_catalog'] = static_catalog['catalog']
+            env_kwargs['title_tokens'] = static_catalog['title_tokens']
+            self._restart_profile = static_catalog['restart_profile']
+            self._restart_manifest_cache = (self._restart_profile, static_catalog['restart_manifest'],
+                                            static_catalog['restart_tasks'])
         # The goal permutation defines train/test membership. It must not vary
         # with the seed of a worker, group, or validation actor.
         env_kwargs['seed'] = env_kwargs.pop('goal_manifest_seed', 0)
@@ -61,30 +70,13 @@ class WebshopWorker(RestartWorkerMixin):
         self.restart_adapter = None
 
     def get_restart_adapter(self):
-        from pathlib import Path
-        import hashlib
-        from .restart import WebshopRestartAdapter, plain
-        from agent_system.milestone_reuse.types import content_id
+        from .restart import WebshopRestartAdapter
         if not hasattr(self, '_restart_profile'):
+            from .shared import restart_profile
             env = self.env.unwrapped
-            root = Path(__file__).resolve().parents[4]
-            paths = ['agent_system/environments/env_package/webshop/envs.py',
-                     'agent_system/environments/env_package/webshop/restart.py',
-                     'migpo/webshop_milestone_detector.py']
-            native = root / 'agent_system/environments/env_package/webshop/webshop/web_agent_site'
-            source_files = [root / path for path in paths]
-            source_files += sorted(native.rglob('*.py')) + sorted(native.rglob('*.html'))
-            index = Path(env.kwargs['index_path'])
-            if not (index / 'OMR-index-manifest.json').is_file():
-                raise RuntimeError('Restart tasks require the prepared index provenance manifest')
-            self._restart_profile = content_id(plain({
-                'products': env.server.product_item_dict, 'prices': env.server.product_prices,
-                'index': {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                          for path in sorted(index.iterdir()) if path.is_file()},
-                'mode': env.observation_mode, 'show_attrs': env.server.show_attrs,
-                'num_prev_obs': env.num_prev_obs, 'num_prev_actions': env.num_prev_actions,
-                'sources': {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
-                            for path in source_files}}))
+            self._restart_profile = restart_profile(env.server.product_item_dict, env.server.product_prices,
+                dict(env.kwargs, observation_mode=env.observation_mode, show_attrs=env.server.show_attrs,
+                     num_prev_obs=env.num_prev_obs, num_prev_actions=env.num_prev_actions))
         return WebshopRestartAdapter(self, self._restart_profile)
 
     def get_task_manifest(self):
@@ -234,13 +226,15 @@ class WebshopMultiProcessEnv(gym.Env):
 
         self._rng = np.random.RandomState(seed)
 
-        self._env_kwargs = env_kwargs if env_kwargs is not None else {'observation_mode': 'text', 'num_products': None}
+        self._env_kwargs = dict(env_kwargs) if env_kwargs is not None else {'observation_mode': 'text', 'num_products': None}
+        self._static_catalog_ref = self._env_kwargs.pop('_static_catalog_ref', None)
 
         # -------------------------- Ray actors setup --------------------------
         env_worker = ray.remote(**resources_per_worker)(WebshopWorker)
         self._workers = []
         for i in range(self.num_processes):
-            worker = env_worker.remote(seed + (i // self.group_n), self._env_kwargs)
+            # A top-level ref is resolved by Ray before actor construction.
+            worker = env_worker.remote(seed + (i // self.group_n), self._env_kwargs, self._static_catalog_ref)
             self._workers.append(worker)
 
         # Get goals from the first worker

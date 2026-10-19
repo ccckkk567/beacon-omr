@@ -780,14 +780,15 @@ def make_envs(config):
         from agent_system.environments.env_package.webshop.configuration import environment_kwargs
         env_kwargs = environment_kwargs(config.env.webshop,
             os.path.join(os.path.dirname(__file__), 'env_package/webshop/webshop'))
+        if config.get('omr', {}).get('protocol', False):
+            from agent_system.environments.env_package.webshop.shared import shared_environment_kwargs
+            env_kwargs = shared_environment_kwargs(env_kwargs)
         _envs = build_webshop_envs(seed=config.env.seed, env_num=config.data.train_batch_size, group_n=group_n, is_train=True, env_kwargs=env_kwargs, resources_per_worker=resources_per_worker)
         _val_envs = build_webshop_envs(seed=config.env.seed + 1000, env_num=config.data.val_batch_size, group_n=1, is_train=False, env_kwargs=env_kwargs, resources_per_worker=resources_per_worker)
 
         projection_f = partial(webshop_projection)
         envs = WebshopEnvironmentManager(_envs, projection_f, config)
         val_envs = WebshopEnvironmentManager(_val_envs, projection_f, config)
-        import time
-        time.sleep((config.data.train_batch_size * group_n + config.data.val_batch_size) * 0.1) # wait for the envs to be ready
         return envs, val_envs
     elif "appworld" in config.env.env_name.lower():
         from agent_system.environments.env_package.appworld import build_appworld_envs, appworld_projection

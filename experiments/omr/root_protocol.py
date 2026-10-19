@@ -18,10 +18,13 @@ from .latest_checkpoint import atomic_json
 
 def seed_root(seed):
     import numpy as np
-    import torch
+    import sys
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
+    # Text simulators use Python/NumPy/native RNGs. Do not load the learner
+    # stack only to seed an unused RNG; preserve seeding when Torch is present.
+    if 'torch' in sys.modules:
+        sys.modules['torch'].manual_seed(seed)
 
 
 def json_value(value):

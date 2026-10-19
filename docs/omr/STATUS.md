@@ -1,5 +1,49 @@
 # Execution status — 2026-10-19
 
+## Current: combined startup optimization, not yet submitted
+
+The user confirmed **d386a1d recovery has not been executed**, then requested
+that repeated initialization and unnecessary imports also be fixed. Use the
+combined newer frozen revision with the same first-update recovery controller,
+old target IDs and new output tags described below. No new job IDs exist yet.
+
+OMR WebShop now runs one CPU Ray preparation task inside the allocated GPU job.
+It constructs products/prices/goals, parses each distinct title with the same
+full `en_core_web_sm` pipeline, hashes index/source provenance, and builds the
+restart manifest once. All 128 training and 16 evaluation actors receive the
+same result ObjectRef as a top-level argument, following [Ray's documented
+argument/lifetime semantics](https://docs.ray.io/en/latest/ray-core/objects.html).
+This avoids repeated construction, not all per-process data deserialization.
+Mutable sessions, goal overrides, histories and RNGs remain private; native
+Lucene handles are still opened independently in each process.
+
+Text environment imports no longer load Selenium or image-only Torch. Root
+seeding still seeds Python/NumPy/native state, and Torch if already loaded,
+without importing Torch just for CPU simulation. Unused cleantext/BM25 imports,
+the duplicate human-attribute JSON read, repeated restart-manifest construction,
+and the arbitrary 14.4-second WebShop startup sleep are removed. Actor method
+futures still wait for their actual constructors to finish.
+
+Pinned Pyserini 0.17's [search package initialization](https://github.com/castorini/pyserini/blob/pyserini-0.17.0/pyserini/search/__init__.py)
+also imports dense encoders. The shared OMR path now uses a version-guarded narrow
+bridge to the same Java `io.anserini.search.SimpleSearcher`, preserving the
+[original string search/document calls](https://github.com/castorini/pyserini/blob/pyserini-0.17.0/pyserini/search/lucene/_searcher.py)
+and raw stored document field. It uses the existing installed jar/index and
+does not change ranking, analyzer settings, query text, k, or returned order.
+Non-OMR callers retain the regular Pyserini API.
+
+**36 targeted local tests passed.** Fresh-process checks forbid unneeded imports,
+exercise native construction/search/click/purchase/reset with private sessions,
+compare cached/uncached rewards (including repeated title nouns), check a single
+preparation ref is used by both vectors, and validate the narrow Java call
+contract. Four golden product/price/goal/RNG digests were independently compared
+against the frozen d386a1d native constructors for synthetic/human goals with and
+without goal limits. Fixtures substitute NLP token production, JVM and Ray
+transport; they do not establish native Java/GPU acceptance or elapsed-time gains.
+Earlier first-update, restore and guarded submission tests also pass in this set.
+`webshop.static_catalog` / `webshop.create_actors` stages and
+`OMR_WEBSHOP_STATIC` timings allow the next formal run to measure the effect.
+
 ## Current: first-update failures repaired; formal replacement prepared
 
 The previously interrupted pending refresh succeeded with controller **175a616**:

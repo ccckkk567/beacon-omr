@@ -3,7 +3,6 @@ import json
 import random
 import string
 import time
-import torch
 
 import numpy as np
 
@@ -13,7 +12,6 @@ from collections import defaultdict
 from copy import deepcopy
 from flask import Flask
 from web_agent_site.engine.engine import (
-    load_products,
     init_search_engine,
     get_top_n_product_from_keywords,
     map_action_to_html,
@@ -22,7 +20,8 @@ from web_agent_site.engine.engine import (
     ACTION_TO_TEMPLATE,
     END_BUTTON, NEXT_PAGE, PREV_PAGE, BACK_TO_SEARCH,
 )
-from web_agent_site.engine.goal import get_reward, get_goals
+from web_agent_site.engine.goal import get_reward
+from web_agent_site.engine.catalog import load_catalog, catalog_binding
 from web_agent_site.utils import (
     DEFAULT_FILE_PATH,
     DEFAULT_ATTR_PATH,
@@ -64,7 +63,6 @@ class WebAgentTextEnv(gym.Env):
 
         random.seed(self._seed)
         np.random.seed(self._seed)
-        torch.manual_seed(self._seed)
 
         self.file_path = file_path
         self.attr_path = attr_path
@@ -82,12 +80,16 @@ class WebAgentTextEnv(gym.Env):
             self.kwargs.get('show_attrs', False),
             index_path=self.kwargs.get('index_path'),
             human_attr_path=self.kwargs.get('human_attr_path'),
+            prepared_catalog=self.kwargs.get('prepared_catalog'),
+            title_tokens=self.kwargs.get('title_tokens'),
         ) if server is None else server
         self.browser = SimBrowser(self.server)
 
         self.session = self.kwargs.get('session')
         self.session_prefix = self.kwargs.get('session_prefix')
         if self.kwargs.get('get_image', 0):
+            import torch
+            torch.manual_seed(self._seed)
             self.feats = torch.load(FEAT_CONV)
             self.ids = torch.load(FEAT_IDS)
             self.ids = {url: idx for idx, url in enumerate(self.ids)}
@@ -169,6 +171,7 @@ class WebAgentTextEnv(gym.Env):
     
     def get_image(self):
         """Scrape image from page HTML and return as a list of pixel values"""
+        import torch
         html_obj = self._parse_html(self.browser.page_source)
         image_url = html_obj.find(id='product-image')
         if image_url is not None:
@@ -311,6 +314,8 @@ class SimServer:
         show_attrs=False,
         index_path=None,
         human_attr_path=None,
+        prepared_catalog=None,
+        title_tokens=None,
     ):
         """
         Constructor for simulated server serving WebShop application
@@ -323,34 +328,25 @@ class SimServer:
         """
         # Load all products, goals, and search engine
         self.base_url = base_url
-        self.all_products, self.product_item_dict, self.product_prices, _ = \
-            load_products(filepath=file_path, attrpath=attr_path, num_products=num_products,
-                          human_goals=human_goals, human_attr_path=human_attr_path)
-        self.search_engine = init_search_engine(num_products=num_products, index_path=index_path)
-        self.goals = get_goals(self.all_products, self.product_prices, human_goals)
+        if prepared_catalog is None:
+            catalog = load_catalog(seed, file_path, attr_path, filter_goals, limit_goals,
+                                   num_products, human_goals, human_attr_path)
+        else:
+            expected = catalog_binding(seed, file_path, attr_path, num_products, human_goals,
+                                       limit_goals, human_attr_path)
+            if filter_goals is not None or prepared_catalog['binding'] != expected:
+                raise ValueError('Prepared WebShop catalog settings differ')
+            catalog = prepared_catalog
+            random.setstate(catalog['random_state'])
+        self.all_products = catalog['all_products']
+        self.product_item_dict = catalog['product_item_dict']
+        self.product_prices = catalog['product_prices']
+        # A session can override instruction text; never modify the static goals.
+        self.goals = deepcopy(catalog['goals'])
+        self.title_tokens = title_tokens
+        self.search_engine = init_search_engine(num_products=num_products, index_path=index_path,
+                                               lightweight=prepared_catalog is not None)
         self.show_attrs = show_attrs
-
-        # Fix outcome for random shuffling of goals
-        random.seed(seed)
-        random.shuffle(self.goals)
-
-        # Apply `filter_goals` parameter if exists to select speific goal(s)
-        if filter_goals is not None:
-            self.goals = [
-                goal for (i, goal) in enumerate(self.goals)
-                if filter_goals(i, goal)
-            ]
-        
-        # Imposes `limit` on goals via random selection
-        if limit_goals != -1 and limit_goals < len(self.goals):
-            self.weights = [goal['weight'] for goal in self.goals]
-            self.cum_weights = [0] + np.cumsum(self.weights).tolist()
-            idxs = []
-            while len(idxs) < limit_goals:
-                idx = random_idx(self.cum_weights)
-                if idx not in idxs:
-                    idxs.append(idx)
-            self.goals = [self.goals[i] for i in idxs]
         print(f'Loaded {len(self.goals)} goals.')
 
         # Set extraneous housekeeping variables
@@ -508,7 +504,8 @@ class SimServer:
             goal,
             price=price,
             options=session["options"],
-            verbose=True
+            verbose=True,
+            title_tokens=self.title_tokens,
         )
 
         self.user_sessions[session_id]['verbose_info'] = info

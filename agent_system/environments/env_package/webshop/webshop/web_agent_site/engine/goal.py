@@ -3,13 +3,22 @@ Functions for specifying goals and reward calculations.
 """
 import itertools
 import random
-import spacy
+from functools import lru_cache
 from collections import defaultdict
 from rich import print
 from thefuzz import fuzz
 from web_agent_site.engine.normalize import normalize_color
 
-nlp = spacy.load("en_core_web_sm")
+@lru_cache(maxsize=1)
+def get_nlp():
+    import spacy
+    return spacy.load("en_core_web_sm")
+
+
+@lru_cache(maxsize=8192)
+def title_nouns(title):
+    # Keep repeats: the original reward divides by the token count, not a set.
+    return tuple(t.text.lower() for t in get_nlp()(title) if t.pos_ in ('PNOUN', 'NOUN', 'PROPN'))
 
 PRICE_RANGE = [10.0 * i for i in range(1, 100)]
 
@@ -127,7 +136,7 @@ def get_synthetic_goals(all_products, product_prices):
     return goals
 
 
-def get_type_reward(purchased_product, goal):
+def get_type_reward(purchased_product, goal, title_tokens=None):
     """Determines the type reward - captures whether chosen product is in the same category"""
     query_match = purchased_product['query'] == goal['query']
 
@@ -140,11 +149,12 @@ def get_type_reward(purchased_product, goal):
     purchased_type = purchased_product['name']
     desired_type = goal['name']
 
-    purchased_type_parse = nlp(purchased_type)
-    desired_type_parse = nlp(desired_type)
-
-    purchased_type_parse = [t.text.lower() for t in purchased_type_parse if t.pos_ in ('PNOUN', 'NOUN', 'PROPN')]
-    desired_type_parse = [t.text.lower() for t in desired_type_parse if t.pos_ in ('PNOUN', 'NOUN', 'PROPN')]
+    if title_tokens is None:
+        purchased_type_parse = title_nouns(purchased_type)
+        desired_type_parse = title_nouns(desired_type)
+    else:
+        purchased_type_parse = title_tokens[purchased_type]
+        desired_type_parse = title_tokens[desired_type]
 
     n_intersect_type = len(
         set(purchased_type_parse) & set(desired_type_parse)
@@ -227,7 +237,7 @@ def get_option_reward(purchased_options, goal_options):
 
 def get_reward(purchased_product, goal, price, options, **kwargs):
     """Get cumulative reward score for purchased product and goal"""
-    r_type_dict = get_type_reward(purchased_product, goal)
+    r_type_dict = get_type_reward(purchased_product, goal, kwargs.get('title_tokens'))
 
     r_price = (
         price <= goal['price_upper']

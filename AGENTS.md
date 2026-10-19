@@ -299,6 +299,25 @@ Current user overrides to the execution specification:
   across quota retries. 58 targeted local tests pass, with Ray/native engines
   and Slurm transport substituted. No repaired GPU update is claimed yet.
 
+- User explicitly requested fixing repeated startup initialization and surplus
+  imports too, and confirmed the d386a1d recovery command has NOT been executed.
+  Keep the same ten old targets/output tags and use the combined newer revision;
+  no d386a1d jobs or recovery receipt should be assumed to exist on Orion.
+- OMR WebShop now prepares products/prices/goals, unchanged spaCy title tokens,
+  index/source provenance and restart task mappings once per job in a CPU Ray
+  task inside its GPU allocation. Train/validation actors share the result ref;
+  sessions, copied goal dictionaries, RNGs, browsers and Lucene handles remain
+  process-owned. No dataset/model/package change or separate preparation job.
+  CPU text resets no longer import Torch only for an unused RNG. WebShop text
+  exports defer Selenium/image dependencies. A narrow Pyserini 0.17 bridge calls
+  the same Java SimpleSearcher directly, avoiding the search package's dense
+  encoder imports. Its API is version-guarded; query text, k, hit order and raw
+  documents are unchanged. JVM searchers still open per simulator process.
+  36 targeted local tests pass, including fresh-process native fixtures and
+  four old-constructor golden comparisons. NLP/JVM/Ray transport are substituted;
+  real GPU training and measured startup speedup remain pending. New logs include
+  webshop.static_catalog and OMR_WEBSHOP_STATIC stage timings.
+
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
 upstream per-environment code profiles and baseline/full common fixes. A milestone

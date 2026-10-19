@@ -1,7 +1,9 @@
 import ast
 import os
 from pathlib import Path
+import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -54,8 +56,9 @@ class WebshopPreflightTests(unittest.TestCase):
         function = next(node for node in source.body if isinstance(node, ast.FunctionDef) and node.name == 'init_search_engine')
         namespace = {'os': os, 'BASE_DIR': '/fixture/web_agent_site', 'LuceneSearcher': lambda path: path}
         exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), 'exec'), namespace)
-        self.assertEqual(namespace['init_search_engine'](index_path='/shared/existing-index'), '/shared/existing-index')
-        self.assertEqual(namespace['init_search_engine'](1000), os.path.join('/fixture/web_agent_site', '../search_engine/indexes_1k'))
+        with patch.dict(sys.modules, {'pyserini.search.lucene': SimpleNamespace(LuceneSearcher=lambda path: path)}):
+            self.assertEqual(namespace['init_search_engine'](index_path='/shared/existing-index'), '/shared/existing-index')
+            self.assertEqual(namespace['init_search_engine'](1000), os.path.join('/fixture/web_agent_site', '../search_engine/indexes_1k'))
 
     def test_webshop_is_attempted_and_failure_cannot_become_success(self):
         class Runner:

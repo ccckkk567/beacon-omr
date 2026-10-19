@@ -75,8 +75,14 @@ class WebshopRestartAdapter:
 
     def __init__(self, worker, profile_id):
         self.worker, self.profile_id = worker, profile_id
-        self.manifest = task_manifest(worker.get_goals(), profile_id)
-        self.tasks = {task.key: task for rows in self.manifest.values() for task in rows}
+        cached = getattr(worker, '_restart_manifest_cache', None)
+        if cached is None:
+            manifest = task_manifest(worker.get_goals(), profile_id)
+            cached = (profile_id, manifest, {task.key: task for rows in manifest.values() for task in rows})
+            worker._restart_manifest_cache = cached
+        if cached[0] != profile_id:
+            raise RestoreMismatch('Cached task manifest belongs to a different restore profile')
+        self.manifest, self.tasks = cached[1:]
         self.trace = []
         self.done = True
 
