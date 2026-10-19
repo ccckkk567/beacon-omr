@@ -87,11 +87,19 @@ class AlfworldWorker(RestartWorkerMixin):
         
         obs, scores, dones, infos = self.env.step(actions)
         infos['observation_text'] = obs
+        self._omr_local_step = getattr(self, '_omr_local_step', 0) + 1
+        infos['omr_local_step'] = [self._omr_local_step]
+        infos['omr_reset_epoch'] = [getattr(self, '_omr_reset_epoch', 0)]
+        infos['executed_action'] = [action]
         return obs, scores, dones, infos
     
     def reset(self):
         """Reset the environment"""
         obs, infos = self.env.reset()
+        self._omr_reset_epoch = getattr(self, '_omr_reset_epoch', 0) + 1
+        self._omr_local_step = 0
+        infos['omr_reset_epoch'] = [self._omr_reset_epoch]
+        infos['omr_local_step'] = [0]
         infos['observation_text'] = obs
         return obs, infos
 
@@ -109,8 +117,9 @@ class AlfworldWorker(RestartWorkerMixin):
         native._gamefiles_iterator = iter([task['target']])
         try:
             obs, infos = self.reset()
-            if infos.get('extra.gamefile') != [task['target']]:
-                raise ValueError('Explicit ALFWorld reset loaded a different game')
+            from agent_system.milestone_reuse.episode_identity import verify_gamefile
+            verify_gamefile(infos.get('extra.gamefile'), task['target'], task_id=task['id'],
+                            identity_source='native_reset', reset_epoch=self._omr_reset_epoch)
             return obs, infos
         finally:
             native._gamefiles_iterator = previous

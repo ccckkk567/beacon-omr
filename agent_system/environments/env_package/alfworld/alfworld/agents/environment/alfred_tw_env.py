@@ -42,13 +42,26 @@ class AlfredInfos(textworld.core.Wrapper):
         self._gamefile = None
 
     def load(self, *args, **kwargs):
+        self._gamefile = None
         super().load(*args, **kwargs)
-        self._gamefile = args[0]
+        self._gamefile = args[0] if args else kwargs['gamefile']
+
+    def _bind_identity(self, state):
+        from agent_system.milestone_reuse.episode_identity import gamefile_value, verify_gamefile
+        bound = gamefile_value(self._gamefile, identity_source='native_load')
+        raw = state.get('extra.gamefile')
+        if raw is not None:
+            verify_gamefile(raw, bound, identity_source='native_state_vs_load')
+        state['extra.gamefile'] = bound
+        return state
 
     def reset(self, *args, **kwargs):
         state = super().reset(*args, **kwargs)
-        state["extra.gamefile"] = self._gamefile
-        return state
+        return self._bind_identity(state)
+
+    def step(self, command):
+        state, score, done = super().step(command)
+        return self._bind_identity(state), score, done
 
 
 # Enum for the supported types of AlfredExpert.

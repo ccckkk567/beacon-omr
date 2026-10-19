@@ -103,7 +103,11 @@ class AlfworldResetTests(unittest.TestCase):
                     self.assertEqual(native.last_seed, TASK['root_seed'])
                     self.assertIs(native._gamefiles_iterator, native.seeded_iterator)
                     randomness = native.batch_env.randomness
-                    self.assertEqual(actor.reset_explicit(TASK), result)
+                    again = actor.reset_explicit(TASK)
+                    self.assertEqual(again[0], result[0])
+                    self.assertEqual({k: v for k, v in again[1].items() if k != 'omr_reset_epoch'},
+                                     {k: v for k, v in result[1].items() if k != 'omr_reset_epoch'})
+                    self.assertEqual(again[1]['omr_reset_epoch'], [2])
                     self.assertEqual(native.batch_env.randomness, randomness)
                     # The explicit task did not consume the default iterator.
                     self.assertEqual(actor.reset()[1]['extra.gamefile'], [OTHER])

@@ -60,6 +60,10 @@ class ProtocolTrainer(RayPPOTrainer):
             else:
                 atomic_json(path, self.manifest)
         startup_stage('protocol.observers_and_schedule')
+        if self.config.omr.enabled and self.config.omr.benchmark == 'alfworld':
+            from .alfworld_acceptance import check_in_allocation
+            startup_stage('alfworld.native_identity_acceptance')
+            check_in_allocation(self.config, self.manifest['splits']['train'][0])
         self.schedule = training_schedule(self.manifest, self.config.omr.benchmark)
         self.signature = digest([self.config.omr.protocol_signature, self.manifest['sha256'], self.schedule])
         self.checkpoints = LatestCheckpoint(self.config.trainer.default_local_dir, self.config.omr.logical_run_id)

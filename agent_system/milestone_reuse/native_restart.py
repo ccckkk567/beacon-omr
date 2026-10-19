@@ -9,6 +9,7 @@ from copy import deepcopy
 import time
 
 from .types import content_id
+from .episode_identity import IdentityContractError, verify_gamefile
 
 
 def flat_result(benchmark, result):
@@ -16,18 +17,29 @@ def flat_result(benchmark, result):
         return deepcopy(result)
     if len(result) == 2:
         obs, info = result
-        return obs[0], {key: value[0] for key, value in info.items()}
+        return obs[0], _flat_infos(info)
     obs, reward, done, info = result
-    return obs[0], float(reward[0]), bool(done[0]), {key: value[0] for key, value in info.items()}
+    return obs[0], float(reward[0]), bool(done[0]), _flat_infos(info)
+
+
+def _flat_infos(info):
+    result = {}
+    for key, value in info.items():
+        if isinstance(value, (list, tuple)):
+            if len(value) != 1:
+                raise IdentityContractError('identity_shape_error', field=key, raw_value=value)
+            value = value[0]
+        result[key] = value
+    return result
 
 
 def receipt(benchmark, task, obs, info, done=False):
     result = {'task_id': task['id'], 'target': task['target'], 'done': bool(done)}
     if benchmark == 'alfworld':
-        from .identity import alfworld_trial_id
-        game = info.get('extra.gamefile', task['target'])
-        if alfworld_trial_id(game) != task['id']:
-            raise ValueError('Explicit replay loaded a different ALFWorld game')
+        verify_gamefile(info.get('extra.gamefile'), task['target'], task_id=task['id'],
+            raw_present='extra.gamefile' in info, original_raw_type=type(info.get('extra.gamefile')).__name__,
+            identity_source='native_load_propagated', reset_epoch=info.get('omr_reset_epoch'),
+            local_step=info.get('omr_local_step'), action=info.get('executed_action'))
         result.update(commands=sorted(info['admissible_commands']), won=bool(info['won']),
                       feedback=' '.join(obs.split()))
     else:
