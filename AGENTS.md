@@ -318,6 +318,27 @@ Current user overrides to the execution specification:
   real GPU training and measured startup speedup remain pending. New logs include
   webshop.static_catalog and OMR_WEBSHOP_STATIC stage timings.
 
+- The user executed first-update recovery at 98d7a69. Its initial evidence check
+  stopped before any cancellation/submission because ALFWorld baseline started.
+  The returned queue confirms 167125_0 RUNNING at 33:11, attempt 167144-0,
+  source 5dd260d and progress starting; this alone does not identify its current
+  initialization/evaluation/rollout stage. ALFWorld 167125_3, ScienceWorld
+  167128_2/5 and their four continuations remain pending. WebShop continuations
+  166699_1/166700_4 are absent from that active queue; do not call them cancelled
+  or successful without evidence. Ancient 166362_2 remains COMPLETING.
+  Use recover_first_update.py --replace-started-zero-update with training
+  --revision 98d7a695f4a4b333e2984b731330d088612cf81b and a newer
+  --controller-revision. Inspect all live bindings and all old attempt sources,
+  progress, optimizer receipts and checkpoint contents before withdrawal; preserve
+  and stop if updates/checkpoints or mismatches appear. Fresh queue errors must
+  not count as absence. Withdraw only the ten named affected jobs, continuations
+  before parents, preserving every old file. Matching started jobs with no
+  completed-update evidence may be withdrawn; separate outputs need not wait for
+  COMPLETING cleanup. Keep the same journal/tags, six 18-hour formal tasks and six
+  own-parent continuations. No smoke, node exclusions or changes to training 98d.
+  Eighteen local recovery/submission tests pass with substituted Slurm transport;
+  revised controller execution and successful GPU training remain unverified.
+
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
 upstream per-environment code profiles and baseline/full common fixes. A milestone

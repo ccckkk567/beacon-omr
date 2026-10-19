@@ -1,6 +1,7 @@
 """Replace the reported first-update failures and pending pairs, formal jobs only.
 
-Uses exact job IDs, fresh pending-only checks and separate output identities.
+Uses exact job IDs, fresh state/source checks and separate output identities.
+Started jobs require the explicit zero-update replacement option.
 Never waits for unrelated cleanup, excludes a node, or deletes old evidence.
 """
 from __future__ import annotations
@@ -36,6 +37,9 @@ OLD = {
                     'parents': ['167128_2', '167128_5'], 'children': ['167129_2', '167130_5']},
 }
 FAILED_PARENTS = ('166698_1', '166698_4')
+# User's returned queue: these continuations have left the active queue.
+# Recheck all states on every invocation; never equate a query error with absence.
+REPORTED_INACTIVE = {'166699_1', '166700_4'}
 # Withdraw all continuations before touching their parents.
 JOBS = {job: (bench, 'omr-resume' if kind == 'children' else 'omr-training')
         for kind in ('children', 'parents') for bench, row in OLD.items() for job in row[kind]}
@@ -60,17 +64,23 @@ def queue(invoke, user):
     return {job: state for job, state in snapshot.items() if job in JOBS}
 
 
-def validate_job(text, job, root, user, invoke):
+def validate_job(text, job, root, user, invoke, allow_started=False):
     if len(text.splitlines()) != 1:
         raise ValueError('Expected one exact array element: ' + job)
     fields = dict(re.findall(r'(?:^|\s)(\w+)=(.*?)(?=\s+\w+=|$)', text))
     bench, name = JOBS[job]
     array, index = job.split('_')
     expected = {'ArrayJobId': array, 'ArrayTaskId': index, 'JobName': name,
-                'Account': 'prjsnnn0000269', 'WorkDir': str(root),
-                'JobState': 'PENDING', 'RunTime': '00:00:00', 'Restarts': '0'}
+                'Account': 'prjsnnn0000269', 'WorkDir': str(root), 'Restarts': '0'}
+    if not allow_started:
+        expected.update(JobState='PENDING', RunTime='00:00:00')
     if any(fields.get(key) != value for key, value in expected.items()) or not fields.get('UserId', '').startswith(user + '('):
-        raise ValueError('Pending job binding/state differs; preserving ' + job)
+        raise ValueError('Job binding/state differs; preserving ' + job)
+    if allow_started:
+        if fields.get('JobState') not in {'PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', *TERMINAL}:
+            raise ValueError('Unexpected old job state; preserving ' + job)
+        if fields['JobState'] == 'PENDING' and fields.get('RunTime') != '00:00:00':
+            raise ValueError('Pending job has previous runtime; preserving ' + job)
     script = Path(fields.get('Command', ''))
     try:
         parts = script.relative_to(root / 'code/beacon-omr-runs').parts
@@ -85,31 +95,147 @@ def validate_job(text, job, root, user, invoke):
     return fields
 
 
-def check_evidence(root):
+def check_evidence(root, allow_started=False):
+    evidence = {}
     for bench, row in OLD.items():
         for method in ('baseline', 'full'):
             run = formal_run_dir(root, bench, method, row['run_tag'])
             progress = run / 'progress.json'
-            if bench != 'webshop':
+            attempts = list((run / 'attempts').glob('*'))
+            if bench != 'webshop' and not allow_started:
                 if progress.exists() or any((run / 'attempts').glob('*')):
                     raise RuntimeError('A reported pending run has started; preserve and inspect ' + str(run))
             elif progress.exists():
                 data = json.loads(progress.read_text())
                 if data.get('status') not in ('starting', 'failed') or data.get('policy_update', 0) != 0:
-                    raise RuntimeError('WebShop progress changed; preserve and inspect ' + str(progress))
+                    raise RuntimeError('Training progress changed; preserve and inspect ' + str(progress))
                 attempt = Path(data.get('attempt', ''))
                 if attempt.parent != run / 'attempts' or attempt.is_symlink():
-                    raise ValueError('Old WebShop attempt differs: ' + str(progress))
+                    raise ValueError('Old attempt differs: ' + str(progress))
                 launch = json.loads((attempt / 'launch.json').read_text())
                 if (launch.get('source_commit') != row['revision'] or
                         launch.get('benchmark') != bench or launch.get('method') != method or
                         launch.get('run_dir') != str(run)):
-                    raise ValueError('Old WebShop source differs: ' + str(progress))
+                    raise ValueError('Old source differs: ' + str(progress))
+                if data.get('source_commit', row['revision']) != row['revision']:
+                    raise ValueError('Progress source differs: ' + str(progress))
+                evidence[run.name] = dict(status=data['status'], attempt=str(attempt),
+                                         source_commit=launch['source_commit'])
+            if allow_started:
+                if run.is_symlink() or (run / 'attempts').is_symlink():
+                    raise ValueError('Old output is a symbolic link: ' + str(run))
+                if attempts and not progress.is_file():
+                    raise RuntimeError('Attempt has no progress record yet; preserve and retry: ' + str(run))
+                for attempt in attempts:
+                    if attempt.is_symlink() or not attempt.is_dir():
+                        raise ValueError('Old attempt is not a private directory: ' + str(attempt))
+                    launch = json.loads((attempt / 'launch.json').read_text())
+                    if (launch.get('source_commit') != row['revision'] or
+                            launch.get('benchmark') != bench or launch.get('method') != method or
+                            launch.get('run_dir') != str(run)):
+                        raise ValueError('Old attempt source differs: ' + str(attempt))
+                if (run / 'final-test.json').exists():
+                    raise RuntimeError('Final evaluation evidence exists; preserve and inspect ' + str(run))
             checkpoint = run / 'checkpoints'
             if checkpoint.exists() and any(p.name not in ('OWNER.json', '.save.lock') for p in checkpoint.iterdir()):
                 raise RuntimeError('Checkpoint data exists; preserve and inspect ' + str(checkpoint))
             if any((run / 'attempts').glob('*/optimization/update-*')):
                 raise RuntimeError('Optimizer evidence exists; preserve and inspect ' + str(run))
+    return evidence
+
+
+def retire_zero_update(root, directory, revision, invoke=command, user=None):
+    """Withdraw the inspected old jobs, including matching started attempts.
+
+    Output identities are independent, so accepted cancellation followed by
+    COMPLETING does not require waiting for node cleanup. No old file is removed.
+    """
+    user = user or getpass.getuser()
+    receipt = directory / 'retirement.json'
+    binding = {'root': str(root), 'revision': revision, 'old': OLD, 'formal_only': True,
+               'replace_started_zero_update': True}
+    state = json.loads(receipt.read_text()) if receipt.exists() else None
+    if state is not None:
+        if state.get('binding') != binding:
+            raise ValueError('First-update recovery belongs to a different request')
+        if state.get('phase') == 'retired':
+            return state
+        if state.get('phase') != 'withdrawing':
+            raise ValueError('Unknown recovery phase')
+    else:
+        for bench, row in OLD.items():
+            if (directory / (bench + '.json')).exists():
+                raise ValueError('New submissions lack a retirement receipt')
+            paths = [formal_run_dir(root, bench, method, row['new_tag']) for method in ('baseline', 'full')]
+            paths.append(formal_manifest_path(root, bench, row['new_tag']).parent)
+            if any(path.exists() or path.is_symlink() for path in paths):
+                raise ValueError('New output identity already exists: ' + bench)
+        state = {'binding': binding, 'phase': 'withdrawing', 'cancel_intent': [], 'verified': {}}
+
+    state['evidence_before'] = check_evidence(root, allow_started=True)
+    snapshot = queue(invoke, user)
+    state['queue_before'] = snapshot
+    # Validate every present target before the first change. Only the two
+    # continuations reported absent, or our own journaled cancellations, may be absent.
+    for job in JOBS:
+        if job not in snapshot:
+            if job not in REPORTED_INACTIVE and job not in state['cancel_intent']:
+                raise RuntimeError('Unreported missing job; preserve and inspect ' + job)
+        else:
+            state['verified'][job] = validate_job(invoke(['scontrol', 'show', 'job', '-o', job]),
+                                                  job, root, user, invoke, allow_started=True)
+    atomic_json(receipt, state)
+
+    def inactive(status):
+        return status is None or status == 'COMPLETING' or status in TERMINAL
+
+    for job, (_, name) in JOBS.items():
+        snapshot = queue(invoke, user)
+        if name == 'omr-training':
+            children = [child for child, (_, kind) in JOBS.items()
+                        if kind == 'omr-resume' and not inactive(snapshot.get(child))]
+            if children:
+                raise RuntimeError('Old continuations still active; no parent cancellation or submission: ' + str(children))
+        if inactive(snapshot.get(job)):
+            continue
+        # Includes the legitimate PENDING -> RUNNING race. Validate its frozen
+        # source and latest progress again, then cancel that exact element only.
+        check_evidence(root, allow_started=True)
+        state['verified'][job] = validate_job(invoke(['scontrol', 'show', 'job', '-o', job]),
+                                              job, root, user, invoke, allow_started=True)
+        if job not in state['cancel_intent']:
+            state['cancel_intent'].append(job)
+        atomic_json(receipt, state)
+        try:
+            invoke(['scontrol', 'update', 'JobId=' + job, 'Comment=omr-first-update-zero-update-fix'])
+            state['verified'][job] = validate_job(invoke(['scontrol', 'show', 'job', '-o', job]),
+                                                  job, root, user, invoke, allow_started=True)
+            check_evidence(root, allow_started=True)
+            atomic_json(receipt, state)
+            invoke(['scancel', '--user=' + user, job])
+        except subprocess.CalledProcessError as error:
+            event = {'job': job, 'error': error_detail(error)}
+            state.setdefault('cancel_errors', []).append(event)
+            atomic_json(receipt, state)
+            # A failed scheduler query must propagate, never become an empty queue.
+            after = queue(invoke, user)
+            event['state_after'] = after.get(job)
+            atomic_json(receipt, state)
+            if not inactive(after.get(job)):
+                raise RuntimeError(event['error'] + '\nPreserving ' + job + ': ' + after[job]) from error
+            print(event['error'], file=sys.stderr)
+        state.setdefault('cancel_requested', []).append(job)
+        atomic_json(receipt, state)
+        print('Cancellation requested: ' + job, flush=True)
+    snapshot = queue(invoke, user)
+    remaining = {job: status for job, status in snapshot.items() if not inactive(status)}
+    if remaining:
+        raise RuntimeError('Old cancellation is still pending; no replacements submitted; retry: ' + str(remaining))
+    state['evidence_after'] = check_evidence(root, allow_started=True)
+    state.update(phase='retired', queue_after=snapshot)
+    atomic_json(receipt, state)
+    print('Old jobs withdrawn or already exiting; using separate outputs without waiting for cleanup.', flush=True)
+    return state
 
 
 def retire(root, directory, revision, invoke=command, user=None):
@@ -182,10 +308,12 @@ def retire(root, directory, revision, invoke=command, user=None):
     return state
 
 
-def submit(root, directory, revision, invoke=command, user=None):
-    retire(root, directory, revision, invoke, user)
+def submit(root, directory, revision, invoke=command, user=None, controller_revision=None,
+           replace_started_zero_update=False):
+    retire_fn = retire_zero_update if replace_started_zero_update else retire
+    retire_fn(root, directory, revision, invoke, user)
     for bench, row in OLD.items():
-        submit_all(root, revision, revision, directory / (bench + '.json'), invoke=invoke,
+        submit_all(root, revision, controller_revision or revision, directory / (bench + '.json'), invoke=invoke,
                    benchmark=bench, include_smoke=False, run_tag=row['new_tag'])
 
 
@@ -193,11 +321,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', required=True)
     parser.add_argument('--revision', required=True)
+    parser.add_argument('--controller-revision', help='Controller revision; keep --revision fixed for training')
+    parser.add_argument('--replace-started-zero-update', action='store_true',
+                        help='Also retire the exact old jobs that started, after source/update/checkpoint checks')
     args = parser.parse_args()
-    if not re.fullmatch('[0-9a-f]{40}', args.revision):
-        parser.error('Use a full frozen revision')
+    controller_revision = args.controller_revision or args.revision
+    if not all(re.fullmatch('[0-9a-f]{40}', revision) for revision in (args.revision, controller_revision)):
+        parser.error('Use full frozen revisions')
     root = Path(args.root).absolute()
-    clean(REPO, args.revision)
+    clean(REPO, controller_revision)
     training = root / 'code/beacon-omr-runs' / ('train-' + args.revision)
     if not training.exists():
         command(['git', '-C', root / 'code/beacon-omr', 'worktree', 'add', '--detach', training, args.revision])
@@ -212,7 +344,8 @@ def main():
     with (directory / '.submit.lock').open('a+') as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
-            submit(root, directory, args.revision)
+            submit(root, directory, args.revision, controller_revision=controller_revision,
+                   replace_started_zero_update=args.replace_started_zero_update)
         except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:
             print(error_detail(error), file=sys.stderr)
             print('Submission records: ' + str(directory), file=sys.stderr)

@@ -1,6 +1,37 @@
 # Execution status — 2026-10-19
 
-## Current: combined startup optimization, not yet submitted
+## Current: recovery paused because an old ALFWorld job started
+
+The user executed recovery at **98d7a69**. It stopped in the initial evidence
+check, before any cancellation or new submission. The follow-up queue shows
+**167125_0 RUNNING at 33:11**, with attempt **167144-0**, source **5dd260d** and
+progress `starting`. This status is written before initialization and is not
+updated until a completed optimizer update; it does not identify the current
+initialization/evaluation/rollout stage. ALFWorld **167125_3** and ScienceWorld
+**167128_2/5** remain pending, as do their four continuations. Old WebShop
+continuations **166699_1/166700_4** are absent from the returned active queue.
+
+Use the newer controller's explicit `--replace-started-zero-update` option,
+keeping training frozen at **98d7a695f4a4b333e2984b731330d088612cf81b** via
+`--revision` and selecting the controller with `--controller-revision`.
+It still targets only the same ten exact old IDs. It validates every present
+job's owner, account, script and frozen source, plus all old attempt sources,
+progress, optimizer receipts and checkpoint contents. Unexpected updates,
+checkpoints, output bindings or query failures stop replacement. The two
+reported missing WebShop continuations may be absent on a fresh all-state query;
+other missing jobs need this controller's own cancellation record.
+
+Continuations are withdrawn first. A matching zero-update parent that moves
+from pending to running can be withdrawn after fresh validation. Cancelled,
+terminal or COMPLETING jobs can be replaced into the existing separate output
+tags without waiting for node cleanup. No old files are deleted, no smoke jobs
+are submitted, no nodes are excluded, and ancient **166362_2** is not a target.
+The same submission journal preserves accepted jobs across quota retries.
+**18 local recovery/submission tests pass**, including the returned queue,
+start races, cancellation/query failures, new update evidence and retry safety.
+Slurm transport is substituted; the revised controller has not yet run on Orion.
+
+## Combined startup optimization, awaiting formal replacement
 
 The user confirmed **d386a1d recovery has not been executed**, then requested
 that repeated initialization and unnecessary imports also be fixed. Use the
@@ -49,8 +80,9 @@ Earlier first-update, restore and guarded submission tests also pass in this set
 The previously interrupted pending refresh succeeded with controller **175a616**:
 ALFWorld formal **167125_0/3**, resumes **167126_0/167127_3**; ScienceWorld formal
 **167128_2/5**, resumes **167129_2/167130_5**. Their training source is **5dd260d**.
-The latest user queue shows all eight pending, plus pending old WebShop resumes
-**166699_1/166700_4**. Ancient **166362_2** remains COMPLETING and is not a target.
+The queue before the first recovery attempt showed all eight pending, plus old
+WebShop resumes **166699_1/166700_4**. The newer returned state is recorded above.
+Ancient **166362_2** remains COMPLETING and is not a target.
 
 Both WebShop formal jobs **166698_1/4**, training source **d6dff44**, failed with
 zero completed optimizer updates:
