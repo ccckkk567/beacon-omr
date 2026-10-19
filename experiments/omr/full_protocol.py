@@ -6,6 +6,7 @@ from pathlib import Path
 import time
 
 from agent_system.milestone_reuse.archive import Archive
+from agent_system.milestone_reuse.candidates import CandidateBuffer
 from agent_system.milestone_reuse.controller import ReuseController
 from agent_system.milestone_reuse.events import EventTrace, score_event
 from agent_system.milestone_reuse.native_restart import render_starts, workers_of
@@ -34,6 +35,8 @@ class FullCollectorObserver(RootCollectorObserver):
         self.thresholds = {}
         self.tokenizer = tokenizer
         self.latest_payload_refs = set()
+        self.candidate_buffer = CandidateBuffer(c.archive.get('candidate_buffer_per_task', 16),
+                                               seed=config.env.seed + 17019)
 
     def task_spec(self, task):
         return TaskSpec(self.benchmark, 'train', str(task.get('family')), task['id'],
@@ -52,6 +55,8 @@ class FullCollectorObserver(RootCollectorObserver):
             self.plans.append(self.controller.plan(self.specs[slot], f'{self.collection_id}:g{slot // self.group_n}'))
         self.actual_ids = [plan.checkpoint_id for plan in self.plans for _ in range(self.group_n)]
         self.candidates, self.pending_counts, self.new_thresholds = [], Counter(), {}
+        self.candidate_buffer.begin()
+        self.pending_entries = {}
         self.restore_rows = []
         self.compute.update(replayed_action_steps=0, restore_worker_seconds=0., capture_seconds=0.,
                             restore_failed_groups=0)
@@ -152,19 +157,26 @@ class FullCollectorObserver(RootCollectorObserver):
                 candidate['rejection'] = 'context_unusable'
                 continue
             task_key = self.specs[slot].key
-            pending = sum(entry.untried for entry in self.controller.archive.for_task(task_key))
-            if pending + self.pending_counts[task_key] >= self.config.omr.archive.max_untried_per_task:
-                candidate['rejection'] = 'pending_capacity'
-                continue
-            self.pending_counts[task_key] += 1
             manager_state = {'task_text': self.manager.tasks[slot],
                 'pre_text_obs': self.manager.pre_text_obs[slot], 'memory': deepcopy(self.manager.memory[slot]),
                 'rendered_observation': text, 'history_length': self.config.env.history_length}
             candidate['entry_fields'] = trace.candidate(category, next_observations['anchor'][slot], info)
+            candidate.update(exact_key=content_id([task_key, category,
+                candidate['entry_fields']['condition_signature'], manager_state]),
+                restore_cost=len(manager_state['memory']))
+            kept, victim = self.candidate_buffer.consider(task_key, candidate)
+            if not kept:
+                candidate.pop('entry_fields')
+                continue
+            if victim is not None:
+                self.pending_entries.pop(victim.get('checkpoint_id'), None)
             captures.append((slot, candidate, workers[slot].omr_capture.remote(manager_state)))
         started = time.monotonic()
         payloads = ray.get([item[2] for item in captures])
         for (slot, candidate, _), payload in zip(captures, payloads):
+            if candidate.get('rejection') == 'candidate_buffer_replaced':
+                candidate.pop('entry_fields', None)
+                continue
             ref = self.store.put(payload)
             history_ref = self.store.put(payload['manager'])
             key = content_id([self.specs[slot].key, ref, history_ref, candidate['entry_fields']])
@@ -179,7 +191,7 @@ class FullCollectorObserver(RootCollectorObserver):
                 root_initialization_receipt=deepcopy(self.start_infos[slot]),
                 provenance={'event_profile': 'native-progress-v1', 'source_commit': self.config.omr.source_commit},
                 **candidate.pop('entry_fields'))
-            self.controller.capture(entry)
+            self.pending_entries[key] = entry
             candidate.update(checkpoint_id=key, payload_ref=ref)
         self.compute['capture_seconds'] += time.monotonic() - started
 
@@ -197,6 +209,8 @@ class FullCollectorObserver(RootCollectorObserver):
         return result
 
     def commit(self, update):
+        for candidate in self.candidate_buffer.selected():
+            self.controller.capture(self.pending_entries[candidate['checkpoint_id']])
         transaction = self.controller.commit(update)
         for task_id, values in self.new_thresholds.items():
             self.thresholds[task_id] = sorted(set(self.thresholds.get(task_id, [])) | values)
@@ -218,10 +232,17 @@ class FullCollectorObserver(RootCollectorObserver):
         dump_records(self.directory / (self.collection_id + '-start-statistics.jsonl.gz'), start_views.values())
         roots = self.active_refs()
         self.store.garbage_collect(roots, self.latest_payload_refs)
-        entries = list(self.controller.archive.entries.values())
+        entries = list(self.controller.archive.active().values())
         return {'archive/entries': len(entries), 'archive/untried': sum(e.untried for e in entries),
                 'archive/task_coverage': len({e.task.key for e in entries}),
                 'archive/candidates': len(self.candidates),
+                'archive/candidates_observed': len(self.candidates),
+                'archive/candidates_exact_duplicate': sum(c.get('rejection') == 'exact_duplicate' for c in self.candidates),
+                'archive/candidates_buffered': len(self.pending_entries),
+                'archive/candidates_buffer_replaced': sum(c.get('rejection') == 'candidate_buffer_replaced' for c in self.candidates),
+                'archive/candidates_buffer_rejected': sum(c.get('rejection') == 'candidate_buffer_capacity' for c in self.candidates),
+                'archive/admissions_succeeded': sum(a['admitted'] for a in transaction['admissions']),
+                'archive/admissions_untried_cap_rejected': sum(a.get('reason') == 'untried_capacity' for a in transaction['admissions']),
                 'archive/admitted': sum(row['admitted'] for row in transaction['admissions']),
                 'archive/context_unusable': sum(row.get('rejection') == 'context_unusable' for row in self.candidates),
                 'archive/right_censored_untried': sum(e.untried for e in entries)
@@ -232,11 +253,12 @@ class FullCollectorObserver(RootCollectorObserver):
                 'sampler/discovery_rate': sum(transaction['discovery'].values()) / len(transaction['discovery'])}
 
     def active_refs(self):
-        return {ref for entry in self.controller.archive.entries.values()
+        return {ref for entry in self.controller.archive.active().values()
                 for ref in (entry.restore_payload_ref, entry.actual_history_ref)}
 
     def state_dict(self):
         return {'schema': 1, 'controller': self.controller.state_dict(), 'thresholds': self.thresholds,
+                'candidate_rng': self.candidate_buffer.rng_state(),
                 'payload_refs': sorted(self.store.dependency_closure(self.active_refs()))}
 
     def load_state_dict(self, state):
@@ -245,6 +267,8 @@ class FullCollectorObserver(RootCollectorObserver):
         self.store.dependency_closure(state['payload_refs'])
         self.controller = ReuseController.from_state_dict(state['controller'])
         self.thresholds = deepcopy(state['thresholds'])
+        if 'candidate_rng' in state:
+            self.candidate_buffer.load_rng(state['candidate_rng'])
         if set(state['payload_refs']) != self.store.dependency_closure(self.active_refs()):
             raise ValueError('Checkpoint restore payload manifest differs from the archive')
         self.latest_payload_refs = set(state['payload_refs'])

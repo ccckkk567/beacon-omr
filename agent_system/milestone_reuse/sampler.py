@@ -25,7 +25,7 @@ class RestartSampler:
 
     def freeze(self, archive, statistics, update):
         self.update = update
-        self.entries = deepcopy(archive.entries)
+        self.entries = deepcopy(archive.active())
         self.views = {key: statistics.view(key, e.event_ids, update) for key, e in self.entries.items()}
         self.reservations, self.selected = set(), defaultdict(int)
 

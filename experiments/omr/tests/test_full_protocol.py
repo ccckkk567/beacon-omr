@@ -152,17 +152,19 @@ class FullIntegrationTests(unittest.TestCase):
         self.collect(0, ['progress', 'advance'])
         self.assertFalse(self.observer.controller.archive.entries)
         self.observer.commit(1)
-        entry = next(iter(self.observer.controller.archive.entries.values()))
+        entry = min(self.observer.controller.archive.entries.values(), key=lambda e: e.initial_score)
         self.assertNotIn(entry.checkpoint_id, self.observer.controller.statistics.events)
         self.assertIn(score_event(50), entry.event_ids)
         self.assertNotIn(score_event(25), entry.event_ids)
         snapshot = json.loads(json.dumps(self.observer.state_dict()))
         self.observer.checkpoint_committed()
         batches = self.collect(1, ['wait', 'goal'])
-        self.assertEqual(len(self.initial_memory[0]), 1)
+        entry = self.observer.controller.archive.entries[self.observer.actual_ids[0]]
+        prefix = entry.prefix_action_count
+        self.assertEqual(len(self.initial_memory[0]), prefix)
         self.assertEqual(len(self.observer.steps), 4)  # Only two new actions x two workers.
-        self.assertEqual(self.observer.compute['replayed_action_steps'], 2)
-        self.assertEqual(self.workers[0].moves, 3)
+        self.assertEqual(self.observer.compute['replayed_action_steps'], 2 * prefix)
+        self.assertEqual(self.workers[0].moves, prefix + 2)
         self.assertTrue(all(row['start_mode'] == 'restart' for row in self.observer.summary))
         self.assertEqual(batches[0].non_tensor_batch['start_id'].tolist(), [entry.checkpoint_id] * 2)
         self.observer.commit(2)

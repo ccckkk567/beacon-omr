@@ -94,7 +94,7 @@ class ReuseController:
             for outcome in valid:
                 self.archive.seen_categories.setdefault(outcome.task.key, set()).update(outcome.verified_categories)
         admissions = []
-        for entry in sorted(self.pending, key=lambda e: (e.task.key, e.source_rollout_id, e.source_local_step, e.checkpoint_id)):
+        for entry in self.pending:
             entry.created_update = updated_policy_version
             admissions.append({"checkpoint_id": entry.checkpoint_id, **self.archive.admit(entry)})
         self.committed_update = updated_policy_version
