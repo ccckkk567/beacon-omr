@@ -1,5 +1,44 @@
 # Execution status — 2026-10-19
 
+## Current priority: old ScienceWorld cleanup on JDS9B74
+
+The user explicitly requested diagnosing the persistent COMPLETING state,
+rather than an isolated-output restart. No such isolation changes were made.
+Recovery still has submitted **no new ScienceWorld jobs**. Later recovery
+attempts are blocked only by **166362_2**, physical job **166572**, JDS9B74.
+
+At **12:16:15 +08**, 7m07s after the recorded EndTime of **12:09:08**:
+
+- JDS9B74 reports **MIXED+COMPLETING**, CPULoad **602.63** against 112 effective
+  CPUs, CPUAlloc=56, AllocMem=753664 MiB, FreeMem=712138 MiB, allocated GPUs=6.
+  The allocation-statistic reductions from the earlier snapshot match 32 CPUs,
+  256 GiB and two GPUs; this does not prove all job processes have terminated.
+- Controller records still list **166362_2.extern**, **.batch** and **.0** as
+  RUNNING. These are controller records, not a fresh process inspection.
+- `sstat --allsteps --jobs=166572` prints **No steps running for job 166572**,
+  returns zero, and provides no statistics. The matching
+  [23.02.8 source](https://github.com/SchedMD/slurm/blob/slurm-23-02-8-1/src/sstat/sstat.c)
+  can emit this message on allocation-lookup failure before querying node
+  statistics, as well as on an empty step list. Do not infer successful node
+  communication, absent processes or a proven epilog hang from this output.
+- Configuration: KillWait=30s, MessageTimeout=10s, UnkillableStepTimeout=300s,
+  SlurmdTimeout=300s, ProctrackType=proctrack/cgroup, node
+  Epilog=/cm/local/apps/cmd/scripts/epilog, EpilogSlurmctld=null. These timers do
+  not sum to a guaranteed cancellation deadline; epilog timeout was not queried.
+- Training output still ends at startup configuration/resource-check warning.
+  No termination traceback, D-state process, epilog execution trace or kernel
+  filesystem/GPU error has been obtained. Earlier step launches to JDS9B74
+  timed out, so node cleanup/communication warrants investigation without a
+  confirmed root cause.
+
+The user confirmed only a login-node terminal is available. Further decisive
+evidence needs node-side job cgroup PIDs/states/wait channels, slurmstepd/slurmd
+termination logs since 12:09, and whether this job's epilog began and finished.
+Do not repeat failed diagnostic allocations, attach with elevated privileges,
+kill unrelated jobs or restart shared node services. The latest queue has
+repaired ALFWorld formal baseline **166629_0**, both ALFWorld smoke arms
+**166613_0/3** and WebShop baseline smoke **166697_1** running; preserve them.
+
 ## Latest ScienceWorld evidence and startup diagnostics
 
 Old ScienceWorld baseline smoke **166370_2**, physical attempt **166696-2**,

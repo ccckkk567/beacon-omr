@@ -155,6 +155,23 @@ Current user overrides to the execution specification:
   166362_2/5 were exiting. No replacement jobs were submitted. Continue with the
   same controller/retirement ledger after cleanup; do not create another chain,
   hot-patch frozen sources or claim the startup instrumentation fixes the cause.
+- The user explicitly redirected work to diagnosing why old ScienceWorld
+  166362_2 (physical allocation 166572) remains COMPLETING. Do not pursue the
+  proposed independent-output resubmission workaround. It was only discussed;
+  no isolation code changes or jobs were made. At 2026-10-19 12:16:15 +08,
+  7m07s after EndTime 12:09:08, JDS9B74 was MIXED+COMPLETING, load 602.63,
+  CPUAlloc=56, AllocMem=753664 MiB, allocated GPUs=6. Controller step records
+  still list extern/batch/0 as RUNNING. sstat returned "No steps running" and
+  exit 0, without statistics. Slurm 23.02.8 sstat source also emits this message
+  when allocation lookup fails before node statistics, so it cannot prove
+  processes are gone or that the node responded. KillWait=30, MessageTimeout=10,
+  UnkillableStepTimeout=300, SlurmdTimeout=300, proctrack/cgroup; node Epilog is
+  /cm/local/apps/cmd/scripts/epilog. Do not sum these timers as a hard cleanup
+  deadline or assert D-state/epilog hang without node evidence. The user has
+  only the login-node terminal, no existing JDS9B74 terminal. Node-side process,
+  slurmstepd/slurmd and epilog evidence is still required. Do not retry ptrace,
+  failed srun launches, broad kills or assume SSH access. New ScienceWorld
+  jobs remain unsubmitted; preserve repaired ALFWorld/WebShop jobs.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
