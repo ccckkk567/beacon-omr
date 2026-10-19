@@ -230,6 +230,32 @@ Current user overrides to the execution specification:
   remains unconfirmed. Formal runs share this startup path; stopping smoke
   does not itself fix the failure.
 
+- The returned queue now has no smoke jobs. WebShop formal 166698_1/4 is
+  RUNNING; preserve both and continuations 166699_1/166700_4. ALFWorld formal
+  166853_0/3 and children 166854_0/166855_3 are PENDING; ScienceWorld formal
+  166749_2/5 and children 166750_2/166751_5 are PENDING. Old 166362_2 remains
+  COMPLETING and is not a target. The ALFWorld reset-repair pair was thus queued;
+  do not repeat its earlier recovery command.
+- Returned TaskRunner self-stacks identify the slow main_ppo.py:89 import of
+  verl.utils.vllm_utils -> DeepSeek/MoE -> torch.compile/Inductor. This was only
+  an early version check and the configured lora_rank is zero. Use distribution
+  metadata only when LoRA needs a version check. The filelock audit hook in one
+  sampled stack does not establish a file lock deadlock or a package fault.
+  Lazily export environment managers and defer ALFWorld image-only Torch imports
+  so simulator class loading does not eagerly import the learner stack.
+  These changes remove demonstrated unnecessary imports; they do not prove the
+  separate rank-zero registration timeout is fixed.
+- refresh_pending_training.py targets only the eight pending jobs above,
+  validating identity, source, zero runtime and no previous attempt before
+  cancellation. It restricts scancel to PENDING, cancels continuations first,
+  checks states again and journals accepted replacements. A running/missing/
+  changed target aborts rather than cancelling or duplicating it. New formal
+  output tags are startup-166853 (ALFWorld) and startup-166749 (ScienceWorld).
+  Submit only the four 18-hour formal tasks and their four own-parent 18-hour
+  resumes; no smoke, node exclusions, package changes or file deletion.
+  Submission ledger: training-submissions/startup-166749-166853/.
+  32 targeted local tests passed; no new submission or GPU acceptance receipt yet.
+
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
 upstream per-environment code profiles and baseline/full common fixes. A milestone

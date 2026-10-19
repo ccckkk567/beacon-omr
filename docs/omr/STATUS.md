@@ -4,8 +4,8 @@
 
 The user requested cancellation of all project `omr-smoke` jobs and no further
 smoke submissions. Preserve the formal training jobs and their continuations;
-do not duplicate them. Cancellation through the user's Tunnel session is still
-awaiting a returned receipt. Older recovery instructions below that include
+do not duplicate them. The returned queue now contains no smoke jobs.
+Older recovery instructions below that include
 smoke are superseded by this decision and must not be rerun unchanged.
 
 The latest ScienceWorld baseline smoke **166748_2**, physical attempt
@@ -17,6 +17,42 @@ vLLM version-check import), and 429.37 seconds in placement/registration before
 failure. These measurements identify expensive stages, not the worker-side
 root cause. Formal training uses the same startup path, so withdrawing smoke
 does not establish that the failure is fixed.
+
+## Startup import repair and pending formal-only refresh
+
+The returned TaskRunner self-stacks now identify the slow import at
+`main_ppo.py:89`: the early vLLM version check imported `vllm_utils`, DeepSeek/MoE
+modules and Torch compiler initialization even with `lora_rank=0`. The controller
+now checks installed distribution metadata only when LoRA is requested and marks
+that stage separately from processor loading. A sampled `filelock` audit hook is
+not evidence of a lock deadlock; no package versions or locking policies change.
+
+Simulator submodule imports also executed the environment package's eager
+manager import, pulling Torch into CPU actors. Public manager exports now load
+on demand; ALFWorld's image-only Torch/torchvision imports are deferred to the
+image helper. The text simulation, batch/group sizes, seeds, rewards and training
+algorithm are unchanged. The measured HPC speedup and the separate rank-zero
+registration failure remain unverified.
+
+The latest queue contains **WebShop 166698_1/4 running** with resumes
+166699_1/166700_4 pending. Preserve them. **ALFWorld 166853_0/3** and
+**ScienceWorld 166749_2/5**, together with their resumes 166854_0/166855_3 and
+166750_2/166751_5, are pending. `refresh_pending_training.py` validates and
+withdraws only these eight pending elements, then uses isolated output tags
+`startup-166853` and `startup-166749` for four formal tasks and four continuations.
+All retain 18 hours, two H200, 32 CPUs and 256 GiB; both formal arms and benchmarks
+queue independently. No smoke or node exclusions are added. A target that starts
+running or changes identity aborts replacement. Accepted submissions survive
+quota retries. Old 166362_2 remains outside this controller and may still be
+COMPLETING. No old logs, checkpoints, manifests or environments are removed.
+
+**32 local regression tests pass**, covering real production controller execution
+up to GPU imports with vLLM unavailable, simulator class imports/serialization
+with Torch forbidden, existing reset/startup tests, pending-only cancellation,
+start races, target binding, quota retries and own-parent continuation dependencies.
+Ray scheduling and simulator engines are test doubles; these are not GPU results.
+New submission records will be under
+`training-submissions/startup-166749-166853/`; no replacement receipt yet.
 
 ## Current priority: ALFWorld explicit reset API repair
 

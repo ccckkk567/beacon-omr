@@ -13,4 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from agent_system.environments.env_manager import EnvironmentManagerBase, make_envs
+# Importing a simulator submodule also executes this package initializer. Keep
+# learner-only Torch imports out of every CPU simulator actor's import path.
+__all__ = ['EnvironmentManagerBase', 'make_envs']
+
+
+def __getattr__(name):
+    if name not in __all__:
+        raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+    from . import env_manager
+    value = getattr(env_manager, name)
+    globals()[name] = value
+    return value

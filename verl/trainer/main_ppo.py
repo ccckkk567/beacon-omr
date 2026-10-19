@@ -84,13 +84,16 @@ class TaskRunner:
         startup_stage('processor.load')
         processor = hf_processor(local_path, trust_remote_code=trust_remote_code, use_fast=True)  # used for multimodal LLM, could be none
 
-        # vllm early verify
-        if config.actor_rollout_ref.rollout.name in ["vllm"]:
-            from verl.utils.vllm_utils import is_version_ge
+        startup_stage('vllm.compatibility_check')
+        # Check installed metadata without importing vLLM's model/compilation
+        # stack into TaskRunner. The rollout workers import the engine when used.
+        if (config.actor_rollout_ref.rollout.name == "vllm"
+                and config.actor_rollout_ref.model.get("lora_rank", 0) > 0):
+            from importlib.metadata import version
+            from packaging.version import Version
 
-            if config.actor_rollout_ref.model.get("lora_rank", 0) > 0:
-                if not is_version_ge(pkg="vllm", minver="0.7.3"):
-                    raise NotImplementedError("PPO LoRA is not supported before vllm 0.7.3")
+            if Version(version("vllm")) < Version("0.7.3"):
+                raise NotImplementedError("PPO LoRA is not supported before vllm 0.7.3")
 
         # define worker classes
         startup_stage('workers.import_classes')

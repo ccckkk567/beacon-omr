@@ -18,8 +18,6 @@ import yaml
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-import torch
-import torchvision.transforms as T
 import ray
 from agent_system.milestone_reuse.native_restart import RestartWorkerMixin
 
@@ -41,6 +39,9 @@ def load_config_file(path):
     return config
 
 def get_obs_image(env):
+    import torch
+    import torchvision.transforms as T
+
     transform = T.Compose([T.ToTensor()])
     current_frames = env.get_frames()
     image_tensors = [transform(i).cuda() for i in current_frames]
