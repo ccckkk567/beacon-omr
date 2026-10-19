@@ -1,5 +1,23 @@
 # Execution status — 2026-10-19
 
+## Latest decision: continue with formal jobs only
+
+The user requested cancellation of all project `omr-smoke` jobs and no further
+smoke submissions. Preserve the formal training jobs and their continuations;
+do not duplicate them. Cancellation through the user's Tunnel session is still
+awaiting a returned receipt. Older recovery instructions below that include
+smoke are superseded by this decision and must not be rerun unchanged.
+
+The latest ScienceWorld baseline smoke **166748_2**, physical attempt
+**166830-2**, source **80dd118**, failed on GDS9B74 with the same **300-second
+rank-zero registration timeout**. No optimizer updates, actions, checkpoint or
+SwanLab run were recorded. TaskRunner startup stages place 503.74 seconds
+between `processor.load` and `workers.import_classes` (including the intervening
+vLLM version-check import), and 429.37 seconds in placement/registration before
+failure. These measurements identify expensive stages, not the worker-side
+root cause. Formal training uses the same startup path, so withdrawing smoke
+does not establish that the failure is fixed.
+
 ## Current priority: ALFWorld explicit reset API repair
 
 Baseline smoke **166613_0**, physical attempt **166727-0**, source **c685614**,

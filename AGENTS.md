@@ -211,6 +211,25 @@ Current user overrides to the execution specification:
   and newly queued ScienceWorld jobs. New ALFWorld replacement IDs are not yet
   returned; package/environment installation is unnecessary for this API fix.
 
+- Latest user override (2026-10-19): withdraw all project `omr-smoke` jobs,
+  including pending and running ones, and use formal training for further
+  debugging/acceptance. Preserve `omr-training`, `omr-resume`, historical logs
+  and experiment files. Cancellation is to be executed by the user through
+  Tunnel; no completion receipt has been returned yet. Do not submit more smoke
+  jobs or repeat old recovery commands that unconditionally include smoke.
+  This overrides all earlier smoke-matrix requests above. Do not resubmit
+  already queued formal jobs just to stop smoke jobs.
+- ScienceWorld smoke 166748_2 (physical attempt 166830-2, source 80dd118)
+  failed on GDS9B74 at the same rank-zero registration timeout (300 seconds),
+  with zero optimizer updates/actions and no checkpoint or SwanLab run.
+  TaskRunner startup recorded processor.load at 32.57 seconds and
+  workers.import_classes at 536.31 seconds. That interval also includes the
+  vLLM early-version import, so do not attribute all 503.74 seconds to the
+  processor alone. Placement/registration spans 593.57 to 1022.94 seconds.
+  Worker-count warnings reach 314; the cause of the rank-zero startup failure
+  remains unconfirmed. Formal runs share this startup path; stopping smoke
+  does not itself fix the failure.
+
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
 upstream per-environment code profiles and baseline/full common fixes. A milestone
