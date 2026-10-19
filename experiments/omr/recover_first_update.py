@@ -126,14 +126,22 @@ def check_evidence(root, allow_started=False):
                     raise ValueError('Old output is a symbolic link: ' + str(run))
                 if attempts and not progress.is_file():
                     raise RuntimeError('Attempt has no progress record yet; preserve and retry: ' + str(run))
+                attempt_sources = []
                 for attempt in attempts:
                     if attempt.is_symlink() or not attempt.is_dir():
                         raise ValueError('Old attempt is not a private directory: ' + str(attempt))
                     launch = json.loads((attempt / 'launch.json').read_text())
-                    if (launch.get('source_commit') != row['revision'] or
+                    # Historical failures share this logical run directory. Their
+                    # source may differ; the progress-selected current attempt
+                    # and live Slurm jobs must still match the expected revision.
+                    source = launch.get('source_commit')
+                    if (not isinstance(source, str) or not re.fullmatch('[0-9a-f]{40}', source) or
                             launch.get('benchmark') != bench or launch.get('method') != method or
                             launch.get('run_dir') != str(run)):
-                        raise ValueError('Old attempt source differs: ' + str(attempt))
+                        raise ValueError('Historical attempt binding is invalid: ' + str(attempt))
+                    attempt_sources.append({'attempt': str(attempt), 'source_commit': source})
+                if attempt_sources:
+                    evidence[run.name]['attempt_sources'] = sorted(attempt_sources, key=lambda item: item['attempt'])
                 if (run / 'final-test.json').exists():
                     raise RuntimeError('Final evaluation evidence exists; preserve and inspect ' + str(run))
             checkpoint = run / 'checkpoints'

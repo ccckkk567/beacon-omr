@@ -339,6 +339,17 @@ Current user overrides to the execution specification:
   Eighteen local recovery/submission tests pass with substituted Slurm transport;
   revised controller execution and successful GPU training remain unverified.
 
+- Controller 5bad4e6 also stopped before any cancellation/submission: WebShop
+  baseline history includes attempt 166511-1 at c193e61, whereas its current
+  attempt is d6dff44. Do not require every historical source to equal the current
+  source. Validate the current progress-selected attempt and live Slurm bindings
+  strictly; historical attempts retain their own valid revision and must match
+  benchmark/method/run directory. Record their sources and keep checking every
+  attempt for optimizer evidence and the shared checkpoint directory for data.
+  The regression was reproduced then repaired; 20 local recovery/submission
+  tests pass. Keep training 98d7a69, existing journal/tags and options; use the
+  repaired controller. No new HPC submissions have yet been reported.
+
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
 upstream per-environment code profiles and baseline/full common fixes. A milestone

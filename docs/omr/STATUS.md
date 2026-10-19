@@ -1,6 +1,25 @@
 # Execution status — 2026-10-19
 
-## Current: recovery paused because an old ALFWorld job started
+## Current: historical-attempt source check repaired
+
+The user ran controller **5bad4e6** with training **98d7a69**. It stopped before
+any cancellation or submission at WebShop baseline's historical attempt
+**166511-1**, which used **c193e61**. The controller incorrectly required every
+historical attempt to match the current **d6dff44** WebShop source.
+
+The repaired controller distinguishes the current progress-selected attempt and
+live Slurm jobs (still pinned to their exact expected source) from retained
+historical attempts (valid source identity and matching benchmark/method/output
+directory, but not necessarily the same revision). It records historical source
+identities in the retirement receipt. Optimizer receipts across **all** attempts
+and shared checkpoint contents still block replacement. No old files are removed.
+The same failure was reproduced locally before the fix; **20 local recovery and
+submission tests now pass**, including mixed-version history, current-source
+mismatches, historical optimizer/checkpoint evidence and idempotent submission.
+Use the newer controller with the same training revision, options, journal and
+output tags. The previous failed invocation created no new job chain.
+
+## Earlier recovery pause: an old ALFWorld job started
 
 The user executed recovery at **98d7a69**. It stopped in the initial evidence
 check, before any cancellation or new submission. The follow-up queue shows

@@ -237,6 +237,16 @@ def started_alfworld(root):
     return run, attempt
 
 
+def historical_webshop(root, method='baseline', revision='c193e617acf03d94e18cad023934e65e64ff6923'):
+    run = formal_run_dir(root, 'webshop', method)
+    attempt = run / 'attempts' / ('166511-1' if method == 'baseline' else '166362-4')
+    attempt.mkdir(parents=True)
+    (attempt / 'launch.json').write_text(json.dumps({'source_commit': revision,
+        'benchmark': 'webshop', 'method': method, 'run_dir': str(run)}))
+    (attempt / 'retained.log').write_text('earlier source failure; preserve this history')
+    return run, attempt
+
+
 class StartedFirstUpdateRecoveryTests(unittest.TestCase):
     def submit(self, root, scheduler):
         recovery.submit(root, root, REV, scheduler, 'linz3', controller_revision='e' * 40,
@@ -283,6 +293,66 @@ class StartedFirstUpdateRecoveryTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'has started'):
                 recovery.submit(root, root, REV, scheduler, 'linz3')
             self.assertFalse(scheduler.calls)
+
+    def test_mixed_source_history_is_preserved_without_relaxing_current_job_binding(self):
+        with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(tmp)
+            failed_webshop(root)
+            started_alfworld(root)
+            # The returned failure used c193e61; another historical source must
+            # work without a per-attempt/per-revision allowlist as well.
+            history = [historical_webshop(root), historical_webshop(root, 'full', 'a' * 40)]
+            before = {p: p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            scheduler = StartedScheduler(root)
+            self.submit(root, scheduler)
+            self.submit(root, scheduler)
+            self.assertEqual(len(scheduler.accepted), 9)
+            for path, content in before.items():
+                self.assertEqual(path.read_bytes(), content)
+            self.assertFalse(any(c[0] == 'scancel' and c[-1] in ('166511_1', '166362_4')
+                                 for c in scheduler.calls))
+            receipt = json.loads((root / 'retirement.json').read_text())
+            for run, attempt in history:
+                evidence = receipt['evidence_before'][run.name]
+                self.assertEqual(evidence['source_commit'], recovery.OLD['webshop']['revision'])
+                self.assertIn({'attempt': str(attempt),
+                               'source_commit': json.loads((attempt / 'launch.json').read_text())['source_commit']},
+                              evidence['attempt_sources'])
+
+    def test_historical_updates_and_bad_bindings_still_block_before_any_cancellation(self):
+        for problem in ('update', 'checkpoint', 'method', 'benchmark', 'directory', 'missing_source',
+                        'malformed_source', 'current_source'):
+            with self.subTest(problem=problem), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                failed_webshop(root)
+                started_alfworld(root)
+                run, attempt = historical_webshop(root)
+                if problem in ('update', 'checkpoint'):
+                    path = (attempt / 'optimization/update-000001.jsonl.gz' if problem == 'update'
+                            else run / 'checkpoints/latest.json')
+                    path.parent.mkdir(parents=True)
+                    path.write_text('preserve existing training evidence')
+                else:
+                    launch_path = (run / 'attempts/old-1/launch.json' if problem == 'current_source'
+                                   else attempt / 'launch.json')
+                    launch = json.loads(launch_path.read_text())
+                    if problem == 'method':
+                        launch['method'] = 'full'
+                    elif problem == 'benchmark':
+                        launch['benchmark'] = 'scienceworld'
+                    elif problem == 'directory':
+                        launch['run_dir'] = str(root / 'unrelated')
+                    elif problem == 'missing_source':
+                        del launch['source_commit']
+                    elif problem == 'malformed_source':
+                        launch['source_commit'] = ['not a commit']
+                    else:
+                        launch['source_commit'] = 'c193e617acf03d94e18cad023934e65e64ff6923'
+                    launch_path.write_text(json.dumps(launch))
+                scheduler = StartedScheduler(root)
+                with self.assertRaises((ValueError, RuntimeError)):
+                    self.submit(root, scheduler)
+                self.assertFalse(scheduler.calls)
 
     def test_progress_checkpoint_old_attempt_and_job_binding_guards(self):
         for problem in ('update', 'checkpoint', 'progress', 'launch', 'old_attempt', 'owner', 'source',
