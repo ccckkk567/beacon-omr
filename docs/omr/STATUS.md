@@ -2,6 +2,16 @@
 
 ## Current repair branch and standalone submission policy
 
+The user now authorized upgrading the remaining queued conditions to the repair
+release: WebShop Full 167237_4 and ScienceWorld baseline/full 167240_2/5, with
+pending old children 167239_4/167241_2/167242_5 withdrawn. All three new jobs
+must use training d9e9d2f, matching ALFWorld Full 167422, as independent named
+jobs with no new resumes. Running ALF/Web baselines and 167422 stay protected.
+The targeted controller validates fresh states and original receipts, then
+materializes and cancels only the six authorized pending elements, children
+first. Replacement IDs are pending user execution. See refresh_queued_repairs.py.
+
+
 The user confirmed successful submission of **167422**, named
 `omr-alfworld-full`, as one standalone formal job with no continuation.
 Training/controller source remains frozen at

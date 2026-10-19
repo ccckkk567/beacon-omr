@@ -389,6 +389,19 @@ with guard blocked for no complete latest, before training. Its parent Full
 167234_3 failed with no optimizer/latest evidence. Preserve all other jobs.
 No native acceptance, optimizer update or checkpoint result for 167422 yet.
 
+Latest user authorization: deploy the correctness repair to the remaining queued
+conditions too. The returned queue has WebShop Full 167237_4 and ScienceWorld
+baseline/full 167240_2/5 PENDING; their children 167239_4,167241_2,167242_5 are
+PENDING. refresh_queued_repairs.py may withdraw only these six verified pending
+elements (children first, exact materialized IDs), then submit three independent
+named formal jobs with no new continuations. Keep training frozen to d9e9d2f
+for all three, matching ALFWorld Full 167422. Keep perturn-legacy-v1/sync-v1.
+Preserve running baselines 167234_0 and 167237_1, their existing continuations
+167235_0/167238_1, ALF Full 167422, all old files and unrelated jobs. A started,
+missing/unexplained or mismatched target aborts rather than being cancelled.
+New tag pool-fix-20261019; journal repairs/queued-pool-fix-20261019/ under
+analysis/beacon-omr. Nine local orchestration tests passed; deployment pending.
+
 Real environment restore, two-GPU updates, monitoring and resume need evidence
 from actual execution. Unit fixtures are not evidence of completed HPC training.
 Checkpoint replacement must commit the new complete generation before removing

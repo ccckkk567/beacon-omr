@@ -8,6 +8,20 @@ below; native/GPU execution acceptance remains pending.
 
 ## Returned submission receipt
 
+Subsequent authorization: the remaining queued WebShop Full and ScienceWorld
+baseline/full also need the common correctness repairs. The user returned all
+three parents and their old children as PENDING. The new
+`refresh_queued_repairs.py` retires only 167239_4,167241_2,167242_5,167237_4,
+167240_2,167240_5 after fresh owner/account/source/receipt/zero-runtime checks;
+then queues three normal named jobs. Its controller revision may be newer,
+while all new training is fixed at d9e9d2f, matching ALF Full 167422. No new
+continuations, model/profile changes or extra experiments. New tag
+pool-fix-20261019; journal analysis/beacon-omr/repairs/queued-pool-fix-20261019.
+Nine local orchestration tests pass, including start races and quota retries.
+No replacement IDs or new GPU acceptance receipts have yet been returned.
+The initial only-ALF deployment scope below is superseded for these exact queued
+conditions; running baselines and all other jobs remain protected.
+
 Formal job **167422**, `omr-alfworld-full`, was submitted successfully using
 frozen training/controller `d9e9d2f3dc27c7c8617a00ab9ed92e370139cc8a`.
 It has no array or new continuation. Journal:
