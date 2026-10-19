@@ -98,11 +98,19 @@ class AlfworldWorker(RestartWorkerMixin):
         from experiments.omr.root_protocol import seed_root
         seed_root(task['root_seed'])
         self.env.seed(task['root_seed'])
-        native = self.env.unwrapped
+        # TextWorld 1.7 returns TextworldBatchGymEnv directly (no Gym base or
+        # .unwrapped). Older Gym-wrapped instances expose the same iterator on
+        # their unwrapped environment. Always assign on its actual owner.
+        native = getattr(self.env, 'unwrapped', self.env)
+        if native.batch_size != 1:
+            raise ValueError('Explicit ALFWorld tasks require one game per worker')
         previous = native._gamefiles_iterator
         native._gamefiles_iterator = iter([task['target']])
         try:
-            return self.reset()
+            obs, infos = self.reset()
+            if infos.get('extra.gamefile') != [task['target']]:
+                raise ValueError('Explicit ALFWorld reset loaded a different game')
+            return obs, infos
         finally:
             native._gamefiles_iterator = previous
     

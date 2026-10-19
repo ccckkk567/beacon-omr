@@ -188,6 +188,28 @@ Current user overrides to the execution specification:
   accepted IDs; uncertain submission outcomes require inspection. No new HPC
   submission output has been returned yet. This avoids the old output/cleanup
   dependency; it is not evidence that the Ray registration failure is fixed.
+- The subsequent queue now contains new ScienceWorld arrays 166748/166749
+  (indices 2,5) and continuations 166750_2/166751_5, all pending. Preserve them.
+  The old ScienceWorld 166362_2 is still COMPLETING. The user explicitly requests
+  no node exclusions; do not exclude JDS9B74 in later replacement submissions.
+- ALFWorld baseline smoke 166613_0 (physical attempt 166727-0, c685614) reached
+  trainer.fit but failed on its first explicit root reset: TextworldBatchGymEnv
+  has no .unwrapped in the reused TextWorld 1.7.0 runtime. Zero optimizer updates,
+  zero actions, no checkpoint. SwanLab created online run y0whj971 and reported
+  uploading records; this is not successful training or checkpoint-save evidence.
+  Fix the production AlfworldWorker reset for direct and Gym-wrapped batch APIs,
+  preserve explicit seed/game choice and iterator restoration, and verify the
+  returned game identity. Full replay shares this same production reset.
+  Latest queue has 166613_3/166629_3 RUNNING, 166630_0 pending without dependency,
+  166631_3 pending with dependency, and no 166613_0/166629_0. Replace only these
+  six identified ALFWorld jobs via recover_alfworld.py. It validates ownership,
+  script/source and absence of old training progress, requests cancellation with
+  continuations first, then queues independent new outputs tagged restart-166629
+  without waiting for cleanup. Preserve old files. Submit baseline/full smoke
+  (1h), formal (18h), and own-parent continuations (18h) using one frozen revision,
+  normal node selection and the existing quota-safe journal. Preserve all WebShop
+  and newly queued ScienceWorld jobs. New ALFWorld replacement IDs are not yet
+  returned; package/environment installation is unnecessary for this API fix.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

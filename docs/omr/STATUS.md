@@ -1,6 +1,48 @@
 # Execution status — 2026-10-19
 
-## Current priority: independent ScienceWorld restart
+## Current priority: ALFWorld explicit reset API repair
+
+Baseline smoke **166613_0**, physical attempt **166727-0**, source **c685614**,
+reached `trainer.fit` after model initialization, then failed at its first
+`AlfworldWorker.reset_explicit`: `TextworldBatchGymEnv` has no `.unwrapped`.
+The previously returned inventory identifies **TextWorld 1.7.0**. Its
+[batch class](https://github.com/microsoft/TextWorld/blob/1.7.0/textworld/gym/envs/textworld_batch.py)
+is returned directly rather than inheriting Gym's environment API.
+
+The fix accepts the direct batch object or a Gym wrapper, selects the explicit
+game on the actual iterator owner, verifies one game per worker and the returned
+`extra.gamefile`, and restores the seeded iterator even when reset fails.
+Both baseline roots and Full capture/replay use this same worker method. The
+seed, task schedule, reward, batch, training algorithm and existing packages are
+unchanged. The report contains **zero updates/actions and no checkpoint**;
+deleting its empty checkpoint directory did not test a real save. SwanLab run
+`y0whj971` was created online and the SDK reported 17 uploaded records, but the
+smoke training/monitoring acceptance flags remain false.
+
+**43 targeted local tests passed** (21 reset/import/full-protocol and 22 recovery/
+submission/resume tests). Five reset tests were additionally run against the
+unchanged TextWorld 1.7.0 batch class and shuffle utility obtained from its
+official tagged source, reproducing the old AttributeError first. Only the
+underlying game engine/import dependencies were substituted; this is not a
+native PDDL task or two-GPU training result. Tests cover direct/wrapped reset,
+task identity, iterator restoration on failure, batch manager output and Full
+prefix replay/continuation through the production worker.
+
+The latest queue shows **166613_3** smoke and **166629_3** formal running,
+**166630_0** pending on priority and **166631_3** pending on dependency;
+166613_0/166629_0 are absent. `recover_alfworld.py` checks only these six exact
+IDs, requests withdrawal with continuations first, and submits the same-size
+baseline/full smoke/formal/resume matrix into new **restart-166629** outputs.
+The formal run and SwanLab name suffix is `-restart-166629`; both arms share
+`manifests/restart-166629/alfworld.json`. Its new journal is
+`training-submissions/alfworld-restart-166629/`. Old files remain intact, new
+jobs do not wait for node cleanup, no node is excluded, and partial quota
+retries keep accepted IDs. **Replacement ALFWorld job IDs remain pending.**
+
+Preserve WebShop 166697_1/4 (both running), 166698_1/4 and 166699_1/166700_4,
+plus the newly queued ScienceWorld jobs listed below.
+
+## ScienceWorld independent restart: new jobs queued
 
 The user now authorizes an alternative to waiting for the old COMPLETING job.
 `isolate_scienceworld.py` prepares one new generation tagged **restart-166362**,
@@ -30,7 +72,10 @@ with one frozen source for controller, baseline/full and continuations:
 submission prevention, partial quota retries, actual launch/config composition,
 new checkpoint selection, paired protocol invariance, startup and monitoring.
 Both changed batch scripts pass Bash parsing. These checks do not establish
-native GPU execution. **No new ScienceWorld submission IDs have been returned.**
+native GPU execution. The user's later queue contains **166748_2/5** and
+**166749_2/5**, plus **166750_2/166751_5**, all pending. Per the supplied
+controller's submission order these are smoke, formal and continuations
+respectively. Preserve them; no new execution logs have been returned.
 After removing node exclusions as requested, **19 affected controller tests
 passed again**, including assertions that submissions do not select or exclude
 any node.

@@ -5,7 +5,29 @@ launcher supports **baseline and Full OMR** on ALFWorld, WebShop and ScienceWorl
 Both arms use the same frozen source. Native GPU training and learning curves
 remain unverified until actual job logs are returned.
 
-## Current ScienceWorld restart
+## Current ALFWorld restart
+
+The c685614 ALFWorld smoke reached its first explicit task reset and failed
+because TextWorld 1.7.0's direct batch environment has no Gym `.unwrapped`.
+The production reset now handles both forms, verifies the returned task and
+restores its seeded iterator on success/failure. Full replay shares the fix.
+
+Run `experiments/omr/recover_alfworld.py --root "$ROOT" --revision "$REV"`
+from the clean frozen checkout supplied in the chat. It validates and withdraws
+only old ALFWorld jobs 166630_0, 166631_3, 166613_0/3 and 166629_0/3, skipping
+already terminal/absent jobs and refusing to cancel if old optimizer/checkpoint
+evidence appears. It preserves old files and immediately submits into independent
+outputs; cleanup delays do not block this new generation. No node is excluded.
+
+The new pair uses suffix `-restart-166629` in formal directories/SwanLab names
+and shares `manifests/restart-166629/alfworld.json`. Submission receipts live in
+`training-submissions/alfworld-restart-166629/`. It submits two one-hour smoke,
+two independent 18-hour formal and two own-parent 18-hour continuation jobs,
+each with two H200, 32 CPUs and 256 GiB. Continuations load only their matching
+new formal checkpoint. Quota retries retain already accepted IDs. Keep current
+WebShop and ScienceWorld jobs unchanged; do not submit another generic array.
+
+## ScienceWorld restart (already queued)
 
 The old baseline 166362_2 remains COMPLETING on JDS9B74. The user authorized
 an independent-output restart, preserving its files and the existing ALFWorld
