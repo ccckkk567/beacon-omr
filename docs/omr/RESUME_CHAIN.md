@@ -99,8 +99,37 @@ ALFWorld baseline import failure requires a new source for both ALFWorld arms.
 Recovery targets its pending continuation jobs 166437_0 and 166515_3 as well as
 the corresponding old-source formal/smoke work; their withdrawal is not yet
 confirmed. The other four continuations retain their original dependencies.
-New ALFWorld continuation dependencies will be arranged with its formal reruns
-after the fixed short-test results. No resumed optimizer output is evidenced.
+The user now requests queueing the repaired ALFWorld formal pair and its new
+continuations immediately, without waiting for short tests. No resumed optimizer
+output is evidenced.
+
+## Repaired ALFWorld formal pair and continuations
+
+Freeze the training checkout at
+`c6856146300b1d6a9f8706cc8a272016b133e400`. From the newer published controller,
+after retiring only the identified pending old ALFWorld tasks, run:
+
+```bash
+python3 -I -S -B "$CONTROL/experiments/omr/submit_alfworld_training.py" \
+  --root "$ROOT" --training-revision "$TRAIN_REV" \
+  --controller-revision "$CONTROL_REV"
+```
+
+This submits formal array `0,3%2` without a smoke dependency, followed by one
+singleton continuation for each arm using `afterany:<new-parent>_0` and `_3`.
+Each of the four tasks requests two H200, 32 CPUs, 256 GiB and 18 hours. The
+controller records accepted IDs under
+`analysis/beacon-omr/training-submissions/alfworld-<training-revision>/jobs.json`.
+Repeat this exact command from the same controller after a quota rejection to
+submit only the missing jobs. An uncertain reply blocks blind resubmission.
+This is one submission round, not automatic replacement after cancellation.
+
+The existing checkpoint guard and SwanLab continuation behavior below apply.
+No old-source checkpoint is migrated, no smoke checkpoint is loaded, and the
+other benchmarks' arrays and dependencies remain intact. Four new fixtures test
+the exact pair/dependencies/resources, quota rejection at each submission,
+uncertain replies, and immutable source binding. All 15 targeted paired-submission,
+resume-chain and monitoring tests passed. New Slurm receipts are still pending.
 
 ## Resources and execution
 

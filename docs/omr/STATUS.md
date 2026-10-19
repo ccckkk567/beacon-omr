@@ -21,9 +21,15 @@ Recovery targets only pending ALFWorld jobs 166362_3, 166370_0, 166370_3,
 166437_0 and 166515_3, followed by a fixed-source ALFWorld smoke pair (indices
 0 and 3, independently scheduled). Withdrawal and new short-job IDs are still
 pending. WebShop/ScienceWorld retain their running/queued c193e61 jobs.
-Both ALFWorld arms must be rerun under the same new source. Their formal
-replacements and continuation dependencies will be arranged after smoke output;
-no existing checkpoint is migrated and no prior training result is overwritten.
+Both ALFWorld arms must be rerun under source
+`c6856146300b1d6a9f8706cc8a272016b133e400`. The user subsequently requested
+queueing these two formal jobs and their corresponding continuations immediately,
+without a smoke dependency. The paired submitter prepares indices 0,3 concurrently
+and one 18-hour continuation after each parent. All four use the fixed training
+source. Its journal preserves accepted IDs across quota retries and blocks
+ambiguous retries; 15 targeted submission/resume/monitoring tests passed locally.
+New formal job IDs are pending user execution. No checkpoint is migrated; prior
+attempt evidence remains intact.
 
 ## Submission history
 

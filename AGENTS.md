@@ -79,8 +79,13 @@ Current user overrides to the execution specification:
   Replace only the affected pending ALFWorld jobs (166362_3, 166370_0, 166370_3,
   166437_0, 166515_3), then submit ALFWorld-only baseline/full smoke jobs at the
   fixed revision. Their cancellation/new submission output is not yet returned.
-  WebShop and ScienceWorld continue at c193e61. Formal ALFWorld reruns and their
-  new continuation dependencies remain to arrange after the fixed short runs.
+  WebShop and ScienceWorld continue at c193e61. The user now explicitly requests
+  queueing both repaired ALFWorld formal jobs and their continuations immediately,
+  without waiting for smoke results. Freeze both arms and continuations at
+  c6856146300b1d6a9f8706cc8a272016b133e400. The newer controller's
+  submit_alfworld_training.py submits indices 0,3 concurrently and one afterany
+  continuation each, recording accepted IDs across quota retries. No new formal
+  submission receipt has been returned yet; do not claim the jobs are submitted.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

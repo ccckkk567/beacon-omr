@@ -68,6 +68,10 @@ The old affected pending jobs are 166362_3, 166370_0, 166370_3, 166437_0 and
 WebShop/ScienceWorld jobs. Cancellation and new smoke IDs are not yet evidenced.
 Both subsequent formal ALFWorld arms must use the same fixed source; the old
 c193e61 source/checkpoint provenance must not be silently rewritten.
+The user subsequently requested queueing the repaired formal pair and its
+continuations immediately, independently of these short tests. See
+`RESUME_CHAIN.md` for the paired submission procedure. It does not submit another
+smoke pair.
 
 ## Outputs
 
