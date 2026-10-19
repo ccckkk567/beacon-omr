@@ -3,7 +3,21 @@
 Branch: `codex/omr-repair-20261019`, reviewed base `311a19f`, failed training
 source `98d7a695f4a4b333e2984b731330d088612cf81b`. Separate local worktree;
 no running or frozen HPC checkout was edited. Orion is reachable only through
-the user's VS Code Tunnel. All HPC execution below remains pending.
+the user's VS Code Tunnel. The user confirmed the standalone repair submission
+below; native/GPU execution acceptance remains pending.
+
+## Returned submission receipt
+
+Formal job **167422**, `omr-alfworld-full`, was submitted successfully using
+frozen training/controller `d9e9d2f3dc27c7c8617a00ab9ed92e370139cc8a`.
+It has no array or new continuation. Journal:
+`analysis/beacon-omr/repairs/receipt-fix-20261019/jobs.json`.
+Log: `logs/beacon-omr/alfworld-full-167422.out`.
+Do not repeat the submission or migrate it to a documentation-only revision.
+Before submission, sacct confirmed old child 167236_3 FAILED; its actual guard
+receipt says blocked for absent complete latest, before entering training.
+New job start, native acceptance, optimizer update and checkpoint results have
+not yet been supplied.
 
 ## Implemented changes
 
@@ -61,8 +75,8 @@ is submitted, with quota-safe intent/accepted-ID journaling. Other jobs and all
 old evidence remain. No node exclusions or machine-wide cleanup.
 
 New run tag: `receipt-fix-20261019`. New SwanLab run carries source,
-parent_failed_run, parent_attempt and execution/writer profile. No new actual
-job ID or SwanLab link exists until the user returns execution output.
+parent_failed_run, parent_attempt and execution/writer profile. Job ID 167422
+is confirmed; a new actual SwanLab link has not yet been returned.
 
 ## Evidence levels and acceptance still needed
 

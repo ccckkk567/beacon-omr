@@ -379,6 +379,16 @@ with no replacement child. Never run an old paired/array submitter for new work.
 The active repair checkout is beacon-omr-repair, branch codex/omr-repair-20261019;
 it is separate from the historical checkout and all frozen HPC sources.
 
+The user confirmed the repaired standalone ALFWorld Full job **167422**, named
+omr-alfworld-full, source/controller d9e9d2f3dc27c7c8617a00ab9ed92e370139cc8a,
+2 H200 / 32 CPU / 256 GiB / 18h, no new continuation. Run tag
+receipt-fix-20261019; log logs/beacon-omr/alfworld-full-167422.out; journal
+analysis/beacon-omr/repairs/receipt-fix-20261019/jobs.json. Do not resubmit or
+migrate it to a newer documentation revision. Old 167236_3 is confirmed FAILED
+with guard blocked for no complete latest, before training. Its parent Full
+167234_3 failed with no optimizer/latest evidence. Preserve all other jobs.
+No native acceptance, optimizer update or checkpoint result for 167422 yet.
+
 Real environment restore, two-GPU updates, monitoring and resume need evidence
 from actual execution. Unit fixtures are not evidence of completed HPC training.
 Checkpoint replacement must commit the new complete generation before removing

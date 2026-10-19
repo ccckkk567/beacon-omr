@@ -1,6 +1,18 @@
 # Execution status — 2026-10-19
 
 ## Current repair branch and standalone submission policy
+
+The user confirmed successful submission of **167422**, named
+`omr-alfworld-full`, as one standalone formal job with no continuation.
+Training/controller source remains frozen at
+`d9e9d2f3dc27c7c8617a00ab9ed92e370139cc8a`; later documentation commits must
+not migrate this run. Resources: 2 H200 / 32 CPUs / 256 GiB / 18 hours.
+Run tag: `receipt-fix-20261019`. Log: `logs/beacon-omr/alfworld-full-167422.out`.
+Submission journal: `analysis/beacon-omr/repairs/receipt-fix-20261019/jobs.json`.
+Old child 167236_3 is FAILED; its guard reports blocked because no complete
+latest checkpoint existed. No new running, optimizer, checkpoint or native
+acceptance evidence for 167422 has been returned yet. Preserve other jobs.
+
 See [repair execution report](REPAIR_EXECUTION_20261019.md). Local CPU fixtures
 pass; native ALFWorld/GPU acceptance is pending. Repair only failed ALFWorld Full
 after exact source/run/state checks. Current baseline and other jobs are KEEP.
