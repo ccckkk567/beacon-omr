@@ -119,9 +119,16 @@ Current user overrides to the execution specification:
   in physical allocation 166362 on H64Y574, attempt 166362-5. Its log ends in
   buffered config output without the baseline resource-check warning; do not
   claim both are stuck in the same call. Node-wide free memory does not rule
-  out a per-job memory limit. Next direct evidence should target the full
-  TaskRunner on H64Y574; do not repeat the failed JDS9B74 diagnostic or infer
-  OOM/deadlock/another user's responsibility without process evidence.
+  out a per-job memory limit. The H64Y574 diagnostic ran at 11:54:29:
+  TaskRunner 2268434 was RNl, elapsed 08:13, CPU 1.5%, RSS 941192 KiB.
+  py-spy was denied permission; do not retry with sudo or weaken ptrace policy.
+  Its own stdout shows 3322 train and 1661 test variations loaded. This is
+  catalog setup, not proof that all 144 asynchronous simulator actors are ready.
+  No Python traceback was returned. The next requested evidence is the existing
+  full run's own Ray debug_state.txt/raylet logs, not another ptrace attempt.
+  New-source startup diagnostics record stages and self-dump stacks every 180
+  seconds during a slow initialization stage, stopping before trainer.fit.
+  They do not hot-patch current frozen jobs or establish a training-root-cause fix.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

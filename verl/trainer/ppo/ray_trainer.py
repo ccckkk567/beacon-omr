@@ -874,7 +874,10 @@ class RayPPOTrainer:
         1. Ray resource pools from configuration
         2. Worker groups for each role (actor, critic, etc.)
         """
+        from experiments.omr.startup import startup_stage
+        startup_stage('resources.check_available')
         self.resource_pool_manager.create_resource_pool()
+        startup_stage('workers.configure_roles')
 
         self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()}
 
@@ -920,30 +923,36 @@ class RayPPOTrainer:
             wg_kwargs["ray_wait_register_center_timeout"] = self.config.trainer.ray_wait_register_center_timeout
 
         for resource_pool, class_dict in self.resource_pool_to_cls.items():
+            startup_stage('workers.placement_and_registration')
             worker_dict_cls = create_colocated_worker_cls(class_dict=class_dict)
             wg_dict = self.ray_worker_group_cls(resource_pool=resource_pool, ray_cls_with_init=worker_dict_cls, device_name=self.device_name, **wg_kwargs)
             spawn_wg = wg_dict.spawn(prefix_set=class_dict.keys())
             all_wg.update(spawn_wg)
 
         if self.use_critic:
+            startup_stage('critic.init_model')
             self.critic_wg = all_wg["critic"]
             self.critic_wg.init_model()
 
         if self.use_reference_policy and not self.ref_in_actor:
+            startup_stage('reference.init_model')
             self.ref_policy_wg = all_wg["ref"]
             self.ref_policy_wg.init_model()
 
         if self.use_rm:
+            startup_stage('reward.init_model')
             self.rm_wg = all_wg["rm"]
             self.rm_wg.init_model()
 
         # we should create rollout at the end so that vllm can have a better estimation of kv cache memory
+        startup_stage('actor_rollout.init_model')
         self.actor_rollout_wg = all_wg["actor_rollout"]
         self.actor_rollout_wg.init_model()
 
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
         if self.config.actor_rollout_ref.rollout.mode == "async":
+            startup_stage('rollout.async_manager')
             self.async_rollout_mode = True
             self.async_rollout_manager = AsyncLLMServerManager(
                 config=self.config.actor_rollout_ref,

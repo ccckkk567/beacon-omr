@@ -22,6 +22,7 @@ import ray
 
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
 from verl.trainer.ppo.reward import load_reward_manager
+from experiments.omr.startup import startup_complete, startup_stage, trace_task_startup
 
 
 @hydra.main(config_path="config", config_name="ppo_trainer", version_base=None)
@@ -48,6 +49,7 @@ def run_ppo(config) -> None:
 
 @ray.remote(num_cpus=1)  # please make sure main_task is not scheduled on head
 class TaskRunner:
+    @trace_task_startup
     def run(self, config):
         # print initial config
         from pprint import pprint
@@ -56,23 +58,30 @@ class TaskRunner:
 
         from verl.utils.fs import copy_to_local
 
+        startup_stage('config.resolve')
         pprint(OmegaConf.to_container(config, resolve=True))  # resolve=True will eval symbol values
+        import sys
+        sys.stdout.flush()
         OmegaConf.resolve(config)
         if config.get('omr', {}).get('protocol', False):
             from experiments.omr.root_protocol import seed_root
             seed_root(config.env.seed)
 
         # download the checkpoint from hdfs
+        startup_stage('model.resolve_path')
         local_path = copy_to_local(config.actor_rollout_ref.model.path, use_shm=config.actor_rollout_ref.model.get("use_shm", False))
 
+        startup_stage('environments.create_actors')
         from agent_system.environments import make_envs
         envs, val_envs = make_envs(config)
 
         # instantiate tokenizer
+        startup_stage('tokenizer.load')
         from verl.utils import hf_processor, hf_tokenizer
 
         trust_remote_code = config.data.get("trust_remote_code", False)
         tokenizer = hf_tokenizer(local_path, trust_remote_code=trust_remote_code)
+        startup_stage('processor.load')
         processor = hf_processor(local_path, trust_remote_code=trust_remote_code, use_fast=True)  # used for multimodal LLM, could be none
 
         # vllm early verify
@@ -84,6 +93,7 @@ class TaskRunner:
                     raise NotImplementedError("PPO LoRA is not supported before vllm 0.7.3")
 
         # define worker classes
+        startup_stage('workers.import_classes')
         if config.actor_rollout_ref.actor.strategy in ["fsdp", "fsdp2"]:
             assert config.critic.strategy in ["fsdp", "fsdp2"]
             from verl.single_controller.ray import RayWorkerGroup
@@ -140,6 +150,7 @@ class TaskRunner:
             role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker)
             mapping[Role.RefPolicy] = global_pool_id
 
+        startup_stage('reward_manager.create')
         reward_manager_name = config.reward_model.get("reward_manager", "episode")
         if reward_manager_name == 'episode':
             from agent_system.reward_manager import EpisodeRewardManager
@@ -156,11 +167,13 @@ class TaskRunner:
 
         assert config.actor_rollout_ref.rollout.n == 1, "In verl, actor_rollout_ref.rollout.n>1 is for GRPO. In verl+env, we keep n=1, and achieve GRPO by env.rollout.n"
 
+        startup_stage('collector.create')
         from agent_system.multi_turn_rollout import TrajectoryCollector
         traj_collector = TrajectoryCollector(config=config, tokenizer=tokenizer, processor=processor)
 
         from verl.utils.dataset.rl_dataset import collate_fn
 
+        startup_stage('datasets.create')
         trainer_class = RayPPOTrainer
         if config.get('omr', {}).get('protocol', False):
             from experiments.omr.training import ProtocolTrainer, RolloutSlots
@@ -171,6 +184,7 @@ class TaskRunner:
             train_dataset = create_rl_dataset(config.data.train_files, config.data, tokenizer, processor)
             val_dataset = create_rl_dataset(config.data.val_files, config.data, tokenizer, processor)
         train_sampler = create_rl_sampler(config.data, train_dataset)
+        startup_stage('trainer.construct')
         trainer = trainer_class(
             config=config,
             tokenizer=tokenizer,
@@ -190,6 +204,7 @@ class TaskRunner:
             val_envs=val_envs,
         )
         trainer.init_workers()
+        startup_complete()
         try:
             trainer.fit()
         except BaseException as error:

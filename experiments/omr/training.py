@@ -41,13 +41,17 @@ class RolloutSlots(Dataset):
 
 class ProtocolTrainer(RayPPOTrainer):
     def __init__(self, *args, **kwargs):
+        from .startup import startup_stage
+        startup_stage('trainer.base_init')
         super().__init__(*args, **kwargs)
         self.run_dir = Path(self.config.omr.run_dir)
         self.attempt = Path(self.config.omr.attempt_dir)
+        startup_stage('manifest.build_catalog')
         self.manifest = build_catalog(self.config.omr.benchmark, self.envs.envs, self.val_envs.envs)
         path = Path(self.config.omr.manifest_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         import fcntl
+        startup_stage('manifest.lock_and_verify')
         with path.with_suffix('.lock').open('a+') as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             if path.exists():
@@ -55,6 +59,7 @@ class ProtocolTrainer(RayPPOTrainer):
                     raise ValueError('Task catalog changed since the shared manifest was frozen')
             else:
                 atomic_json(path, self.manifest)
+        startup_stage('protocol.observers_and_schedule')
         self.schedule = training_schedule(self.manifest, self.config.omr.benchmark)
         self.signature = digest([self.config.omr.protocol_signature, self.manifest['sha256'], self.schedule])
         self.checkpoints = LatestCheckpoint(self.config.trainer.default_local_dir, self.config.omr.logical_run_id)

@@ -1,5 +1,33 @@
 # Execution status — 2026-10-19
 
+## Latest ScienceWorld evidence and startup diagnostics
+
+At **11:54:29 +08**, the diagnostic step on H64Y574 ran successfully. Full
+TaskRunner **2268434** was alive (RNl, elapsed 08:13, CPU 1.5%, RSS 941192 KiB).
+`py-spy` was denied permission; no stack was collected and no elevated access
+will be attempted. The worker's own stdout shows **3322 train / 1661 test**
+variations loaded, with no Python exception in the returned stderr. These are
+catalog messages emitted before asynchronous actor initialization completes;
+they do not demonstrate model loading, all simulator readiness, or an update.
+The next requested evidence is this run's own Ray scheduler/debug logs.
+
+The new source adds explicit TaskRunner startup stages (environment actor
+creation, tokenizer/processor, worker imports, manifest/lock, Ray resources and
+placement/registration, reference/actor model initialization). Stage records and
+process-owned stack dumps go under each attempt's `startup/` directory. A slow
+stage triggers a self-dump every 180 seconds using CPython's watchdog, requiring
+no ptrace or elevated privileges. The watchdog is cancelled before `trainer.fit`
+and on initialization failure; exception messages/locals/credentials are not
+included. Initialization completion is not optimizer success. Existing frozen
+jobs remain on their submitted source. This change improves observability; the
+underlying ScienceWorld startup delay is not yet diagnosed or claimed fixed.
+
+**48 distinct targeted local tests passed** across startup, training/full
+protocol, ALFWorld import boundary, smoke and monitoring tests. The startup
+fixture exercises CPython's real timed stack dump and cancellation in a child
+process, and executes the production worker-init method with injected placement
+and model failures. These checks do not emulate Ray scheduling or GPU training.
+
 ## Latest execution: duplicate WebShop goal identities
 
 WebShop baseline attempt **166511-1**, source c193e61, exited before model/worker
