@@ -1,10 +1,14 @@
-# Execution status — 2026-10-18
+# Execution status — 2026-10-19
 
 The user requested direct progress into training, without more standalone
 preflight/continuation jobs. **Baseline and Full OMR training are now connected
 for all three benchmarks.** The user reports that the earlier v1 baseline array
-was submitted; its job ID and optimizer logs are still pending. No v2 job has
-been reported submitted, and no HPC optimizer update has been returned yet.
+was submitted and subsequently paused by the user. The v2 array **166362** was
+reported submitted with all six elements pending on testqueue. No HPC optimizer
+update has been returned yet. One dependent 18-hour continuation per element is
+prepared; submission is executed by the user. See `RESUME_CHAIN.md`.
+The 11 targeted resume-chain/monitoring fixtures passed locally; this does not
+establish actual Slurm submission or a resumed GPU optimizer update.
 
 See `TRAINING.md` for actual submission/resume commands. Each array element uses
 two H200 and trains one benchmark/arm for 150 updates; all six elements may run

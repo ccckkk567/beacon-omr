@@ -15,6 +15,10 @@ bash "$ROOT/code/beacon-omr/experiments/omr/submit_training.sh" \
   "$ROOT" "$ROOT/evidence/beacon-omr/webshop-prepare-165873/report.json" "$REV" all both
 ```
 
+For one additional 18-hour continuation of each already submitted array element,
+use `RESUME_CHAIN.md`. Keep its training revision identical to the parent; the
+newer orchestration checkout does not replace the frozen training code.
+
 The script freezes a clean detached source checkout without touching the four
 modified files in the user's existing checkout. It submits array `0-5%6`:
 0/1/2 are ALFWorld/WebShop/ScienceWorld baseline; 3/4/5 are the corresponding full

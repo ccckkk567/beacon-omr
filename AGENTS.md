@@ -28,10 +28,15 @@ Current user overrides to the execution specification:
 - Submit independent ready benchmark runs concurrently, with two H200 per run
   (twelve H200 for three benchmarks times baseline/full). Let Slurm queue for available resources; do not impose
   a one-at-a-time throttle or benchmark completion dependencies.
-- The user submitted the earlier v1 baseline array; its job ID is still pending.
-  Preserve it and its records. Protocol v2 fixes common horizon/history semantics;
+- The user paused the earlier v1 baseline jobs; their IDs are still pending.
+  Preserve them and their records. Protocol v2 fixes common horizon/history semantics;
   v1 baseline must not be used as the formal comparator for v2 Full OMR. Do not
   silently resume v1 checkpoints under v2 or cancel unidentified jobs.
+- The v2 six-condition array is 166362, frozen at c193e617acf03d94e18cad023934e65e64ff6923.
+  The user requested one additional 18-hour continuation per element, each waiting
+  for its own predecessor. Preserve that training revision during resume; newer
+  orchestration scripts may submit/check it without migrating training state.
+  Continue the SwanLab run when possible; the user also permits a new linked run.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
