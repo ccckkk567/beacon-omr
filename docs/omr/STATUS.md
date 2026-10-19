@@ -8,22 +8,27 @@ reported submitted with all six elements pending on testqueue. No HPC optimizer
 update has been returned yet. The user returned successful submission receipts
 for six dependent 18-hour continuations: **166364_0, 166365_1, 166366_2,
 166367_3, 166368_4, 166369_5**, corresponding to parent indices 0–5.
-See `RESUME_CHAIN.md` for the recorded mapping; do not submit another chain.
-The 11 targeted resume-chain/monitoring fixtures passed locally. Submission is
-now evidenced, but running status and resumed GPU updates are not yet evidenced.
+These six continuations were subsequently cancelled at the user's request to
+free submission slots for smoke tests. See `RESUME_CHAIN.md` for the historical
+mapping. The 11 targeted resume-chain/monitoring fixtures passed locally;
+no resumed GPU updates have been evidenced.
 
 The user requested short real-training jobs while the formal array queues.
 One-hour, two-update diagnostics for all six conditions are prepared, using the
 same frozen c193e61 training source, full B16/G8/H shapes and separate outputs.
 The user approved saving then deleting the smoke checkpoints after recording
-the save evidence. Six targeted local fixtures passed; no smoke GPU result or
-submission ID has yet been returned. See `SHORT_TRAINING.md`.
+the save evidence. Six targeted local fixtures passed. Smoke array **166370**
+has now been submitted successfully with controller
+`f130cfe90c1b5e22a6ee1960f73cfa82997813cc`; no smoke GPU execution results have
+been returned yet. See `SHORT_TRAINING.md`.
 The first smoke submission was rejected by Slurm with
 `QOSMaxSubmitJobPerUserLimit`; it created no smoke job and ran no training code.
 The user then explicitly requested cancelling the six continuation jobs
 166364_0 through 166369_5 and submitting all six smoke conditions in their place.
-Formal array 166362 remains authorized and unchanged. Withdrawal/submission
-output is still pending; the old continuation IDs are historical receipts.
+The returned script output confirms the six continuation IDs left the queue
+before successful submission of smoke array 166370. Formal array 166362 remains
+authorized and unchanged. The old continuation IDs are historical receipts,
+not an active continuation chain; do not duplicate the submitted smoke array.
 
 See `TRAINING.md` for actual submission/resume commands. Each array element uses
 two H200 and trains one benchmark/arm for 150 updates; all six elements may run

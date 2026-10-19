@@ -40,7 +40,8 @@ Current user overrides to the execution specification:
 - The user returned successful continuation submissions: indices 0–5 map to
   166364_0, 166365_1, 166366_2, 166367_3, 166368_4, 166369_5 respectively.
   They use orchestration revision 6993666a2a8305072dbb3024fcec76100fa943ec.
-  Do not submit an additional chain. No optimizer/resume logs have been returned yet.
+  These six continuations were subsequently cancelled at the user's request.
+  No optimizer/resume logs have been returned yet.
 - The user subsequently requested short real-training jobs to detect errors while
   the formal array queues. Prepare six independent one-hour/two-update smoke runs
   using the frozen c193e61 training source and isolated outputs/SwanLab project.
@@ -49,7 +50,9 @@ Current user overrides to the execution specification:
   Preserve the formal array. After the short-test submission hit
   QOSMaxSubmitJobPerUserLimit, the user explicitly requested withdrawing the six
   continuation jobs listed above to free slots for all six smoke conditions.
-  Cancellation and successful smoke submission have not yet been evidenced.
+  The user returned successful cancellation/queue-removal and smoke submission
+  output: smoke array 166370, controller f130cfe90c1b5e22a6ee1960f73cfa82997813cc.
+  Do not duplicate this smoke array. Its GPU execution results are still pending.
   The original continuation submission ledger remains historical; do not treat
   its old child IDs as an active continuation chain after withdrawal.
 

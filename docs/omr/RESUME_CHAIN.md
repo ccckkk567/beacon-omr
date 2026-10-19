@@ -22,8 +22,10 @@ These receipts establish submission, not running status or completed GPU updates
 
 Later the six-condition smoke submission was rejected by the submit-job quota.
 The user explicitly requested withdrawing these six continuations to free slots
-for smoke tests. Cancellation output is pending. Once withdrawn, their old
-`jobs.json` entries are historical submissions, not proof of active continuations;
+for smoke tests. The returned script output confirms all six IDs left the queue
+before smoke array **166370** was submitted successfully. These continuations
+are cancelled. Their old `jobs.json` entries are historical submissions,
+not proof of active continuations;
 do not use the original idempotent submit command to claim they were resubmitted.
 
 The six continuations retain the frozen training revision

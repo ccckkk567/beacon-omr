@@ -40,7 +40,9 @@ same short test is queued. The existing formal array 166362 stays unchanged.
 The first submission was rejected by `QOSMaxSubmitJobPerUserLimit` and produced
 no smoke job. The user then authorized cancelling the six continuations
 166364_0 through 166369_5 to free submission slots for all six short tests.
-Cancellation and a successful smoke submission still await returned evidence.
+The user returned successful cancellation/queue-removal and submission output:
+**smoke array 166370**, controller `f130cfe90c1b5e22a6ee1960f73cfa82997813cc`.
+GPU execution results are still pending. Do not submit a duplicate array.
 
 Logs: `logs/beacon-omr/smoke-<array>_<index>.out`.
 Outputs: `analysis/beacon-omr/smoke-<array>/<benchmark>-<method>/attempts/<job>-<index>/`.
