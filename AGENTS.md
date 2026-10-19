@@ -96,15 +96,24 @@ Current user overrides to the execution specification:
   share the canonical pools; retain counts and duplicate source indices in the
   manifest. Both WebShop arms need the same repaired frozen source.
   The user queue showed old WebShop full 166362_4 RUNNING, smoke 166370_1/4 and
-  continuations 166438_1/166516_4 pending. Retirement commands were supplied for
-  these exact five IDs; their cancellation output is not yet returned. Submit
+  continuations 166438_1/166516_4 pending. Retirement targeted these exact five
+  IDs; subsequent confirmations are recorded below. Submit
   repaired WebShop smoke/formal pairs and per-arm continuations through the
   journaled submit_benchmark_training.py --benchmark webshop --include-smoke.
   Each pair is concurrent; formal jobs do not wait for smoke results. Preserve
   accepted IDs on quota retries and do not duplicate pending jobs.
-  ScienceWorld 166362_2 was RUNNING at 34:38, with unchanged startup logs. A
-  read-only stack diagnostic inside existing allocation 166572 was supplied;
-  output is pending. Do not infer its failure from the WebShop-specific error.
+  Later output confirms 166370_1, 166370_4 and 166362_4 are CANCELLED;
+  166438_1 and 166516_4 were absent from the targeted remaining-ID query.
+  CANCELLED records can remain visible in squeue --states=all; presence alone
+  must not block replacement submission as though these were active jobs.
+  The latest queue confirms repaired WebShop formal jobs 166698_1/4 pending.
+  New WebShop smoke/resume IDs have not been returned; do not duplicate them.
+  ScienceWorld 166362_2 was RUNNING at 46:58 on JDS9B74. The read-only stack
+  diagnostic failed to launch step 166572.2 with a Slurm socket timeout, before
+  any process/stack output. This establishes a diagnostic launch failure, not
+  the training root cause. Full 166362_5 was RUNNING at 1:51 on H64Y574.
+  Read current shared training logs/progress and scheduler node status next;
+  do not repeat the failed srun or infer OOM/deadlock without evidence.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

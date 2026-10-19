@@ -33,13 +33,22 @@ For WebShop it queues smoke `1,4%2` (one hour), formal `1,4%2` (18 hours), and o
 source. There is no smoke-to-formal dependency. Accepted IDs survive quota
 rejections; uncertain outcomes block blind retries.
 
-The latest returned queue contains ALFWorld arrays 166613/166629 (indices 0,3)
-and continuations 166630_0/166631_3; preserve them. Retire only the identified
-old-source WebShop tasks: running 166362_4 and pending 166370_1, 166370_4,
-166438_1, 166516_4. Their cancellation and new WebShop IDs are not yet returned.
-ScienceWorld 166362_2 was running at **34:38** with unchanged startup output;
-its in-allocation stack diagnostic is still pending. Other ScienceWorld jobs
-remain intact. A WebShop manifest failure is not evidence about ScienceWorld.
+Returned queues contain ALFWorld arrays 166613/166629 (indices 0,3) and
+continuations 166630_0/166631_3; preserve them. Old WebShop 166370_1, 166370_4
+and 166362_4 are confirmed **CANCELLED**; 166438_1/166516_4 had already left the
+targeted remaining-ID query. The supplied retirement guard wrongly treated
+terminal records retained by `squeue --states=all` as active. Direct submission
+was then supplied. The latest queue confirms repaired WebShop formal pair
+**166698_1/166698_4** pending; new smoke/resume IDs have not been returned.
+
+ScienceWorld baseline **166362_2** was RUNNING at **46:58** on JDS9B74. The
+diagnostic `srun` failed to launch step **166572.2** with a socket send/receive
+timeout; no process status or stack was collected. This does not establish the
+training root cause or prove a node-wide outage/OOM. Full **166362_5** was
+RUNNING at **1:51** on H64Y574. Next evidence is current shared training
+logs/progress for both arms and scheduler-reported node state, without another
+remote diagnostic step. No ScienceWorld optimizer update has been evidenced.
+A WebShop manifest failure is not evidence about ScienceWorld.
 
 ## Earlier execution: ALFWorld import boundary failure
 
