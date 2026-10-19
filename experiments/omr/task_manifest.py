@@ -79,7 +79,7 @@ def seed_for(*parts):
 def build_catalog(benchmark, train_vector, test_vector):
     """Read the native task catalogs once during real training initialization."""
     from experiments.omr.latest_checkpoint import file_sha256
-    from agent_system.milestone_reuse.identity import alfworld_trial_id, webshop_goal_id
+    from agent_system.milestone_reuse.identity import alfworld_trial_id, webshop_goal_catalog
     if benchmark == 'alfworld':
         def rows(vector):
             result = []
@@ -108,7 +108,7 @@ def build_catalog(benchmark, train_vector, test_vector):
     other = ray.get(test_vector._workers[0].get_goals.remote())
     if digest(goals) != digest(other):
         raise ValueError('Train/eval workers disagree on the native goal permutation')
-    rows = [{'id': webshop_goal_id(goal), 'target': index, 'family': goal.get('category')}
-            for index, goal in enumerate(goals)]
-    return split_catalog(rows[500:], rows[:500], {'benchmark': benchmark,
-        'test_pool': 'native-goals[0:500]', 'goal_manifest_sha256': digest(goals)})
+    pools, audit = webshop_goal_catalog(goals)
+    return split_catalog(pools['train'], pools['test'], {'benchmark': benchmark,
+        'test_pool': 'unique identities from native-goals[0:500]',
+        'goal_manifest_sha256': digest(goals), 'goal_canonicalization': audit})

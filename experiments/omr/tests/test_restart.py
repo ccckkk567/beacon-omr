@@ -138,14 +138,16 @@ class RestartTests(unittest.TestCase):
         self.assertEqual(source.step('random-search'), target.step('random-search'))
         self.assertEqual(random.getstate(), outside)
 
-    def test_manifest_preserves_native_split_and_rejects_content_overlap(self):
+    def test_manifest_preserves_test_identity_and_excludes_train_copy(self):
         worker = Worker()
         manifest = restart.task_manifest(worker.goals, 'p')
         self.assertEqual([len(manifest[k]) for k in ('train', 'test')], [2, 500])
         self.assertEqual(manifest['train'][0].initialization['goal_index'], 500)
         worker.goals[500] = worker.goals[0]
-        with self.assertRaisesRegex(ValueError, 'Duplicate instance'):
-            restart.task_manifest(worker.goals, 'p')
+        manifest = restart.task_manifest(worker.goals, 'p')
+        self.assertEqual([len(manifest[k]) for k in ('train', 'test')], [1, 500])
+        self.assertEqual(manifest['train'][0].initialization['goal_index'], 501)
+        self.assertEqual(manifest['test'][0].instance_id, content_id(worker.goals[0]))
 
     def test_actual_manager_renderer_keeps_history_and_rejects_wrong_world(self):
         # Exercise the actual native manager methods without eager Torch/Gym/Ray

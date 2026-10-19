@@ -12,7 +12,7 @@ from enum import Enum
 import random
 import time
 
-from agent_system.milestone_reuse.identity import webshop_goal_id, verify_disjoint_splits
+from agent_system.milestone_reuse.identity import webshop_goal_catalog, verify_disjoint_splits
 from agent_system.milestone_reuse.types import TaskSpec, content_id
 
 
@@ -38,16 +38,15 @@ def plain(value):
 
 
 def task_manifest(goals, profile_id):
-    """Preserve BEACON's actual split: test [0,500), train [500,N)."""
-    if len(goals) <= 500:
-        raise ValueError('The frozen WebShop profile needs more than 500 goals')
+    """Use the same canonical goal pools as baseline/full training."""
+    pools, _ = webshop_goal_catalog(goals)
     manifest_id = content_id({'goals': goals, 'profile_id': profile_id})
     result = {'train': [], 'test': []}
-    for index, goal in enumerate(goals):
-        split = 'test' if index < 500 else 'train'
-        identity = webshop_goal_id(goal)
-        result[split].append(TaskSpec('webshop', split, identity, identity,
-            {'goal_index': index, 'manifest_id': manifest_id, 'profile_id': profile_id}))
+    for split, rows in pools.items():
+        for row in rows:
+            identity = row['id']
+            result[split].append(TaskSpec('webshop', split, identity, identity,
+                {'goal_index': row['target'], 'manifest_id': manifest_id, 'profile_id': profile_id}))
     verify_disjoint_splits(result)
     return result
 

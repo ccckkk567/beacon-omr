@@ -133,6 +133,26 @@ resume-chain and monitoring tests passed. New Slurm receipts are still pending.
 
 ## Resources and execution
 
+For the WebShop duplicate-goal repair, use a clean `train-$TRAIN_REV` worktree
+containing the fix and a clean controller, both at their explicit full revisions:
+
+```bash
+python3 -I -S -B "$CONTROL/experiments/omr/submit_benchmark_training.py" \
+  --root "$ROOT" --benchmark webshop --include-smoke \
+  --training-revision "$TRAIN_REV" --controller-revision "$CONTROL_REV"
+```
+
+It journals one smoke pair (one hour, two native updates with save-then-delete
+checkpoint testing), one formal pair (18 hours), then one continuation for each
+formal arm (18 hours). Smoke and formal arrays both use `1,4%2` and have no
+dependency on each other. Both continuations depend on their own new formal
+element, and use its same frozen source/checkpoint/SwanLab semantics. The ledger
+is `analysis/beacon-omr/training-submissions/webshop-<training-revision>/jobs.json`.
+Repeat the same command after a definite quota rejection; accepted arrays and
+children are retained. Do not also invoke the non-journaled smoke submit command.
+Existing frozen ALFWorld controllers and queued jobs are unaffected by the newer
+generic entry point. These submissions are pending returned HPC receipts.
+
 Each singleton child array retains its original index. Child 0 depends on
 `afterany:166362_0`, child 1 on `afterany:166362_1`, and so on. Each requests
 two H200, 32 CPUs, 256 GiB and 18 hours on testqueue. A child can run after its

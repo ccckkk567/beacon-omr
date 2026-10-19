@@ -84,8 +84,27 @@ Current user overrides to the execution specification:
   without waiting for smoke results. Freeze both arms and continuations at
   c6856146300b1d6a9f8706cc8a272016b133e400. The newer controller's
   submit_alfworld_training.py submits indices 0,3 concurrently and one afterany
-  continuation each, recording accepted IDs across quota retries. No new formal
-  submission receipt has been returned yet; do not claim the jobs are submitted.
+  continuation each, recording accepted IDs across quota retries. The latest
+  returned queue contains new ALFWorld arrays 166613 and 166629 (indices 0,3)
+  and continuations 166630_0, 166631_3. Preserve these; do not resubmit ALFWorld.
+- WebShop baseline attempt 166511-1 at c193e61 failed before worker/model
+  initialization: identical complete goal dictionaries collide in the strict
+  task manifest. Canonicalize full goal content, keep all native test identities,
+  retain the first index of each identity, and exclude train copies of test goals.
+  Do not hide overlap by adding an index to the identity, merge only instruction
+  text, or remove the split check. Both baseline and full/restart adapters must
+  share the canonical pools; retain counts and duplicate source indices in the
+  manifest. Both WebShop arms need the same repaired frozen source.
+  The user queue showed old WebShop full 166362_4 RUNNING, smoke 166370_1/4 and
+  continuations 166438_1/166516_4 pending. Retirement commands were supplied for
+  these exact five IDs; their cancellation output is not yet returned. Submit
+  repaired WebShop smoke/formal pairs and per-arm continuations through the
+  journaled submit_benchmark_training.py --benchmark webshop --include-smoke.
+  Each pair is concurrent; formal jobs do not wait for smoke results. Preserve
+  accepted IDs on quota retries and do not duplicate pending jobs.
+  ScienceWorld 166362_2 was RUNNING at 34:38, with unchanged startup logs. A
+  read-only stack diagnostic inside existing allocation 166572 was supplied;
+  output is pending. Do not infer its failure from the WebShop-specific error.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

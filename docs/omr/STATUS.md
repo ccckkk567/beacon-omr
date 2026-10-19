@@ -1,6 +1,47 @@
 # Execution status — 2026-10-19
 
-## Latest execution: ALFWorld import boundary failure
+## Latest execution: duplicate WebShop goal identities
+
+WebShop baseline attempt **166511-1**, source c193e61, exited before model/worker
+initialization or optimizer updates. The first exception is
+`Duplicate/overlapping concrete task identities in source pools` in
+`task_manifest.split_catalog`. Complete generated goal dictionaries can repeat;
+the previous code incorrectly assumed one unique content identity per list row.
+The later `OSError: [Errno 77] File descriptor in bad state` occurred while the
+launcher closed its lock after the failed child. Its filesystem cause is not
+established; it is separate from the first, reproducible manifest failure.
+
+The fix retains full-content goal identities and the original test identities.
+It keeps the first native index per identity, excludes all training copies of
+test goals, and deduplicates remaining train goals before the dev holdout. It
+never changes the native goal array, merges merely equal text, salts IDs with an
+index, or disables disjointness checks. Baseline and full restart catalogs share
+this rule. The saved manifest includes raw/canonical counts, excluded occurrence
+counts, cross-split counts, full input digest and duplicate source indices. This
+is an explicit content-unique task-pool adaptation, not a claim of unchanged
+native row-sampling weights. Actual HPC counts remain to be returned.
+
+All **77 targeted tests passed**: 39 identity/catalog/replay/training/core tests,
+plus 38 submission/resume/monitoring/smoke/full tests. A fixture executes the
+original synthetic goal generator with duplicate product options to reproduce
+the source failure mode; this does not establish which product rows duplicated
+in the HPC data. No repaired GPU updates have been evidenced.
+
+The paired submitter now supports one selected benchmark and optional smoke.
+For WebShop it queues smoke `1,4%2` (one hour), formal `1,4%2` (18 hours), and one
+18-hour `afterany:<new-formal>_<index>` continuation each. All use one repaired
+source. There is no smoke-to-formal dependency. Accepted IDs survive quota
+rejections; uncertain outcomes block blind retries.
+
+The latest returned queue contains ALFWorld arrays 166613/166629 (indices 0,3)
+and continuations 166630_0/166631_3; preserve them. Retire only the identified
+old-source WebShop tasks: running 166362_4 and pending 166370_1, 166370_4,
+166438_1, 166516_4. Their cancellation and new WebShop IDs are not yet returned.
+ScienceWorld 166362_2 was running at **34:38** with unchanged startup output;
+its in-allocation stack diagnostic is still pending. Other ScienceWorld jobs
+remain intact. A WebShop manifest failure is not evidence about ScienceWorld.
+
+## Earlier execution: ALFWorld import boundary failure
 
 The first returned ALFWorld baseline log (attempt 166509-0, training source
 c193e61) fails in `make_envs` before optimizer updates or model initialization:
@@ -28,8 +69,8 @@ without a smoke dependency. The paired submitter prepares indices 0,3 concurrent
 and one 18-hour continuation after each parent. All four use the fixed training
 source. Its journal preserves accepted IDs across quota retries and blocks
 ambiguous retries; 15 targeted submission/resume/monitoring tests passed locally.
-New formal job IDs are pending user execution. No checkpoint is migrated; prior
-attempt evidence remains intact.
+The subsequent queue contains the new ALFWorld arrays/continuations listed above.
+No checkpoint is migrated; prior attempt evidence remains intact.
 
 ## Submission history
 
