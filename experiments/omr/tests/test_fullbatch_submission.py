@@ -32,7 +32,11 @@ class FullBatchSubmissionTests(unittest.TestCase):
             write(formal_run_dir(self.root, bench, method, tag) / 'execution-profile.json', dict(
                 revision=submitter.OLD_REV, execution_profile_id='perturn-legacy-v1', writer_profile_id='sync-v1'))
         for tag, state in grouped.items():
-            write(self.root / 'analysis/beacon-omr/repairs' / tag / 'jobs.json', state)
+            # Match the historical controllers' actual output directories,
+            # independently of the run tag and the reader under test.
+            ledger_name = {'receipt-fix-20261019': 'receipt-fix-20261019',
+                           'pool-fix-20261019': 'queued-pool-fix-20261019'}[tag]
+            write(self.root / 'analysis/beacon-omr/repairs' / ledger_name / 'jobs.json', state)
         report = self.root / 'evidence/beacon-omr/webshop-prepare-165873/report.json'
         write(report, {})
         write(report.with_name('site.json'), {})
@@ -73,6 +77,31 @@ class FullBatchSubmissionTests(unittest.TestCase):
             profile = json.loads((formal_run_dir(self.root, bench, method, submitter.TAG) / 'execution-profile.json').read_text())
             self.assertEqual(profile['execution_profile_id'], 'perturn-legacy-v1')
         self.assertFalse(any(c[0] in ('scancel', 'scontrol') for c in self.calls))
+
+    def test_run_tag_and_original_ledger_directory_are_independent(self):
+        repairs = self.root / 'analysis/beacon-omr/repairs'
+        self.assertFalse((repairs / 'pool-fix-20261019').exists())
+        for bench, method, job, tag in submitter.TARGETS:
+            expected = repairs / ('receipt-fix-20261019' if bench == 'alfworld' else 'queued-pool-fix-20261019') / 'jobs.json'
+            self.assertEqual(submitter.original_receipt(self.root, bench, method, job, tag), str(expected))
+
+    def test_controller_only_fix_preserves_frozen_training_revision_and_retry_journals(self):
+        control = 'b' * 40
+        with patch.object(submitter, 'clean_revision') as clean, contextlib.redirect_stdout(io.StringIO()):
+            audit = submitter.submit(self.root, NEW, self.directory, apply=True,
+                invoke=self.invoke, user='linz3', controller_revision=control)
+        self.assertEqual(audit['controller_revision'], control)
+        self.assertEqual(audit['new_revision'], NEW)
+        self.assertEqual(clean.call_args_list[0].args, (submitter.REPO, control))
+        self.assertEqual(clean.call_args_list[1].args[-1], NEW)
+        for (bench, method, _, _), argv in zip(submitter.TARGETS, self.accepted):
+            self.assertEqual(argv[-4], NEW)
+            record = json.loads((self.directory / f'{bench}-{method}.json').read_text())
+            self.assertEqual(record['binding']['revision'], NEW)
+            profile = json.loads((formal_run_dir(self.root, bench, method, submitter.TAG) / 'execution-profile.json').read_text())
+            self.assertEqual(profile['revision'], NEW)
+        self.submit()
+        self.assertEqual(len(self.accepted), 4)
 
     def test_live_job_or_missing_cancellation_never_submits(self):
         self.queue['167422'] = 'omr-alfworld-full|RUNNING'

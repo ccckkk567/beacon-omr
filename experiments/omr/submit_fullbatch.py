@@ -31,6 +31,10 @@ TARGETS = [('alfworld', 'full', '167422', 'receipt-fix-20261019'),
 PROTECTED = [('alfworld', 'baseline', '167234_0', 'update-fix-167125'),
              ('webshop', 'baseline', '167237_1', 'update-fix-166698')]
 PROTECTED_CHILDREN = ['167235_0', '167238_1']
+# The previous queued-repair controller used a journal directory distinct from
+# its scientific run tag. Never infer a journal path from that tag.
+ORIGINAL_JOURNALS = {'receipt-fix-20261019': 'receipt-fix-20261019',
+                     'pool-fix-20261019': 'queued-pool-fix-20261019'}
 
 
 def states(invoke, user):
@@ -51,7 +55,7 @@ def states(invoke, user):
 
 
 def original_receipt(root, benchmark, method, job, tag):
-    path = root / 'analysis/beacon-omr/repairs' / tag / 'jobs.json'
+    path = root / 'analysis/beacon-omr/repairs' / ORIGINAL_JOURNALS[tag] / 'jobs.json'
     record = json.loads(path.read_text())
     binding = record['binding']
     if any(binding.get(k) != v for k, v in dict(root=str(root), revision=OLD_REV, run_tag=tag).items()):
@@ -163,14 +167,15 @@ def inventory(root, invoke=command, user=None):
             'migration': 'none; only cancelled runs without optimizer/checkpoint state get fresh outputs'}
 
 
-def submit(root, revision, directory, *, apply=False, invoke=command, user=None):
+def submit(root, revision, directory, *, apply=False, invoke=command, user=None, controller_revision=None):
     audit = inventory(root, invoke, user)
     training = root / 'code/beacon-omr-runs' / ('train-' + revision)
     audit['new_revision'] = revision
+    audit['controller_revision'] = controller_revision or revision
     audit['commands'] = [formal_job_command(root, training, revision, *r[:2], TAG) for r in TARGETS]
     if not apply:
         return audit
-    clean_revision(REPO, revision)
+    clean_revision(REPO, controller_revision or revision)
     report = root / 'evidence/beacon-omr/webshop-prepare-165873/report.json'
     if not report.is_file() or not report.with_name('site.json').is_file():
         raise ValueError('Accepted report/site binding missing')
@@ -192,20 +197,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', required=True)
     parser.add_argument('--revision', required=True)
+    parser.add_argument('--controller-revision', help='Optional controller-only fix; training stays at --revision')
     parser.add_argument('--apply', action='store_true')
     args = parser.parse_args()
-    if not re.fullmatch('[0-9a-f]{40}', args.revision):
-        parser.error('Use a full frozen source revision')
+    if any(not re.fullmatch('[0-9a-f]{40}', value)
+           for value in (args.revision, args.controller_revision or args.revision)):
+        parser.error('Use full frozen training/controller revisions')
     root = Path(args.root).absolute()
     directory = root / 'analysis/beacon-omr/training-submissions' / TAG
     if not args.apply:
-        print(json.dumps(submit(root, args.revision, directory), indent=2))
+        print(json.dumps(submit(root, args.revision, directory, controller_revision=args.controller_revision), indent=2))
         return 0
     import fcntl
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / '.submit.lock').open('a+') as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        submit(root, args.revision, directory, apply=True)
+        submit(root, args.revision, directory, apply=True, controller_revision=args.controller_revision)
     print('Submission records: ' + str(directory))
     return 0
 

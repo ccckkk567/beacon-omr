@@ -3,8 +3,9 @@
 Base: repair branch `codex/omr-repair-20261019`,
 `e3e36b444989420b7b52a0c6cc47362db5b11ba6`.
 Release branch: `codex/omr-restore-fullbatch-20261019`; the full deployment SHA
-is the clean checkout's `git rev-parse HEAD`, bound into each new submission,
-profile, launch and resolved config. Upstream reference remains
+for training is `ddae412e6195d2f86dace7f5ce2630d155ac0c01`, bound into each
+new submission, profile, launch and resolved config. A later controller-only
+fix is selected separately with `--controller-revision`. Upstream reference remains
 `c88af45736b0a178106bc14ea89603ff02d8b222`.
 
 ## Finding and narrow change
@@ -101,3 +102,21 @@ both arms, writer independence, source conflicts, standalone retry/quota guards,
 candidate/archive rules, identity/root contracts, real sync guards, bounded
 writer durability and latest-checkpoint state. These are fixtures on local
 Python/Torch, not native simulator, CUDA, two-H200 or completed training evidence.
+
+## Submission-journal path correction
+
+The user's first `ddae412` apply exited during inventory with FileNotFoundError,
+before training checkout creation or any sbatch call. The queued-repair run tag
+is `pool-fix-20261019`, but its actual submission journal is
+`repairs/queued-pool-fix-20261019/jobs.json`. The reader incorrectly treated the
+run tag as the journal directory. ALFWorld's independent receipt directory was
+already correct. Historical files must stay at their original paths.
+
+The controller now uses an explicit run-tag/journal-directory mapping. Fixtures
+use the historical controllers' actual layouts independently of the reader;
+the returned failure was reproduced before the fix. All 17 targeted submission
+tests pass, including correct receipt paths, zero-update/checkpoint protections,
+writer preservation, partial quota retries and protected jobs. The retry uses
+the corrected controller with `--revision ddae412e6195d2f86dace7f5ce2630d155ac0c01`
+and a separate controller SHA. It retains the same new-run tags and idempotent
+journals; no source migration, history rewrite or extra GPU probe is involved.

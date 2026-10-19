@@ -427,3 +427,11 @@ independently preserved writer, named standalone jobs, no automatic resumes.
 Preserve old baselines 167234_0/167237_1 and children 167235_0/167238_1, unrelated
 jobs, all frozen sources and historical outputs. No hot patch/migration. New
 submission IDs and actual partial-done full-batch GPU evidence are pending.
+
+The first ddae412 submission exited in inventory before any sbatch: the reader
+confused run tag pool-fix-20261019 with the actual prior submission journal
+directory queued-pool-fix-20261019. Use the corrected explicit journal mapping,
+not moving/copying old files. Keep training frozen to ddae412 and select the
+new controller with --controller-revision; same fullbatch-20261019 tags and
+retry journals, four standalone jobs and no new continuations. The failure was
+reproduced locally; 17 related submission tests pass. No new HPC IDs yet.
