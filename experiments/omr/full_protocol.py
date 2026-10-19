@@ -68,7 +68,12 @@ class FullCollectorObserver(RootCollectorObserver):
         local.memory = type(self.manager.memory)()
         observations, _ = render_starts(local, self.benchmark, packets, update_vector_state=False)
         if len(set(observations['text'])) != 1:
-            raise ValueError('Group members did not restore the same concrete input history')
+            if self.benchmark != 'scienceworld' or any(p['manager'] is not None for p in packets):
+                raise ValueError('restart_condition_mismatch: group concrete input history differs')
+            from .root_contracts import render_comparison
+            for i in range(1, len(packets)):
+                render_comparison(self.benchmark, observations['text'][0], observations['text'][i],
+                                  packets[0]['info'], packets[i]['info'])
 
     def initialize(self):
         import ray

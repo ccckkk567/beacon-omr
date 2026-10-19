@@ -86,21 +86,23 @@ class RootCollectorObserver:
         self.counter += 1
 
     def reset(self, observations, infos):
-        from agent_system.milestone_reuse.identity import alfworld_trial_id
+        from .root_contracts import identity_contract, render_comparison
+        self.render_diagnostics = []
         if len(infos) != len(self.tasks):
             raise ValueError('Explicit task batch differs from native environment count')
         for i, (task, info) in enumerate(zip(self.tasks, infos)):
-            if self.benchmark == 'alfworld' and alfworld_trial_id(info['extra.gamefile']) != task['id']:
-                raise ValueError('ALFWorld reset identity mismatch')
-            if self.benchmark == 'scienceworld' and [info['task_num'], info['task_variation']] != task['target']:
-                raise ValueError('ScienceWorld reset identity mismatch')
-            if self.benchmark == 'webshop' and info['goal_id'] != task['id']:
-                raise ValueError('WebShop reset identity mismatch')
+            identity_contract(self.benchmark, task, info)
             if i % self.group_n:
                 root = i - i % self.group_n
-                if task != self.tasks[root] or observations['text'][i] != observations['text'][root]:
-                    raise ValueError('Group members did not receive the same concrete root state')
+                if task != self.tasks[root]:
+                    raise ValueError('Group task/slot assignment differs')
+                diagnostic = render_comparison(self.benchmark, observations['text'][root],
+                    observations['text'][i], infos[root], info)
+                if diagnostic:
+                    self.render_diagnostics.append(dict(diagnostic, slot=i, root_slot=root))
         self.initial_observations = list(observations['text'])
+        if self.render_diagnostics:
+            dump_records(self.directory / (self.collection_id + '-root-render.jsonl.gz'), self.render_diagnostics)
 
     def generation_seeds(self, step):
         # Request-specific vLLM seeds isolate evaluation from the training RNG.

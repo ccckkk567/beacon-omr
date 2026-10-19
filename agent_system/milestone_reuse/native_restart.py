@@ -46,6 +46,7 @@ def receipt(benchmark, task, obs, info, done=False):
         if [info['task_num'], info['task_variation']] != task['target']:
             raise ValueError('Explicit replay loaded a different ScienceWorld variation')
         result.update(score=float(info['score']), completed=info.get('raw_completed', False),
+                      objective=info.get('task_description'),
                       actions=sorted(info['possible_actions']))
     return result
 
@@ -102,6 +103,9 @@ class NativeReplay:
             if self.trace[-1]['receipt'] != expected['receipt']:
                 raise ValueError(f'Native replay diverged at prefix action {self.replayed}')
             self.text_differences += self.trace[-1]['after'] != expected['after']
+            if self.benchmark == 'scienceworld' and (
+                    self.trace[-1]['before'] != expected['before'] or self.trace[-1]['after'] != expected['after']):
+                raise ValueError('restart_condition_mismatch: actual policy-visible replay history differs')
         manager = deepcopy(state['manager'])
         # Use the observations actually obtained through the identical native
         # load/reset/step API sequence; score alone is never the restore contract.
