@@ -50,6 +50,22 @@ logs/progress for both arms and scheduler-reported node state, without another
 remote diagnostic step. No ScienceWorld optimizer update has been evidenced.
 A WebShop manifest failure is not evidence about ScienceWorld.
 
+At **11:51:40 +08**, the returned shared-file/node inspection shows:
+- JDS9B74 is MIXED, with **CPULoad 621.54**, 112 effective CPUs, 88 allocated
+  CPUs and 712726 MiB node-wide free memory. This is evidence of high system
+  load, not proof of its source, a GPU problem, or a per-job memory outcome.
+- Baseline log mtime is **11:18:11**, over 33 minutes unchanged; progress is
+  still `starting`. The last emitted warning comes from the resource check.
+- Full log mtime is **11:46:24**, about five minutes unchanged; progress is
+  `starting`. Its tail ends inside config printing, so it does not establish
+  the same stopping point as baseline. TaskRunner PID is **2268434**, physical
+  allocation **166362**, attempt **166362-5** on H64Y574.
+
+The next bounded stack inspection targets the full run on H64Y574. Do not
+attribute the load to this job or other users without process evidence, assume
+node-wide free memory excludes a job-limit OOM, or change the training protocol
+based only on the load snapshot. Existing submitted jobs/source bindings remain.
+
 ## Earlier execution: ALFWorld import boundary failure
 
 The first returned ALFWorld baseline log (attempt 166509-0, training source

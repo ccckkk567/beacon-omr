@@ -112,8 +112,16 @@ Current user overrides to the execution specification:
   diagnostic failed to launch step 166572.2 with a Slurm socket timeout, before
   any process/stack output. This establishes a diagnostic launch failure, not
   the training root cause. Full 166362_5 was RUNNING at 1:51 on H64Y574.
-  Read current shared training logs/progress and scheduler node status next;
-  do not repeat the failed srun or infer OOM/deadlock without evidence.
+  At 2026-10-19 11:51:40 +08, JDS9B74 reports MIXED, CPULoad=621.54,
+  CPUEfctv=112, CPUAlloc=88, FreeMem=712726 MiB. Baseline log mtime is
+  11:18:11 (over 33 minutes unchanged), progress still starting. Full log mtime
+  is 11:46:24 (about 5 minutes unchanged), progress starting, TaskRunner 2268434
+  in physical allocation 166362 on H64Y574, attempt 166362-5. Its log ends in
+  buffered config output without the baseline resource-check warning; do not
+  claim both are stuck in the same call. Node-wide free memory does not rule
+  out a per-job memory limit. Next direct evidence should target the full
+  TaskRunner on H64Y574; do not repeat the failed JDS9B74 diagnostic or infer
+  OOM/deadlock/another user's responsibility without process evidence.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
