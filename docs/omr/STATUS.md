@@ -1,5 +1,32 @@
 # Execution status — 2026-10-19
 
+## Latest execution: ALFWorld import boundary failure
+
+The first returned ALFWorld baseline log (attempt 166509-0, training source
+c193e61) fails in `make_envs` before optimizer updates or model initialization:
+the learner imports `alfworld.info` through the vendored simulator package even
+though `worker_python` selects the separate ALFWorld runtime. The source fix
+defers the same factory import until the catalog or simulator actor calls it.
+It does not change packages, algorithms, rewards or training shapes.
+
+All 26 targeted import-boundary, smoke, bootstrap and training-protocol tests
+passed, including real manager imports/worker serialization with simulator
+imports blocked in the learner. The smoke batch script passes Bash syntax checks.
+Actual fixed-source GPU execution remains unverified.
+
+The latest user queue shows WebShop baseline 166362_1 running; formal indices
+2–5 and all six smoke jobs pending. All replacement continuations now exist:
+166437_0, 166438_1, 166514_2, 166515_3, 166516_4, 166517_5.
+Recovery targets only pending ALFWorld jobs 166362_3, 166370_0, 166370_3,
+166437_0 and 166515_3, followed by a fixed-source ALFWorld smoke pair (indices
+0 and 3, independently scheduled). Withdrawal and new short-job IDs are still
+pending. WebShop/ScienceWorld retain their running/queued c193e61 jobs.
+Both ALFWorld arms must be rerun under the same new source. Their formal
+replacements and continuation dependencies will be arranged after smoke output;
+no existing checkpoint is migrated and no prior training result is overwritten.
+
+## Submission history
+
 The user requested direct progress into training, without more standalone
 preflight/continuation jobs. **Baseline and Full OMR training are now connected
 for all three benchmarks.** The user reports that the earlier v1 baseline array
@@ -40,12 +67,10 @@ successful cancellation output, so the new explicit confirmed-ID option binds
 that evidence to the original ledger and checks live queue absence across all
 states. All 20 targeted resume/replacement/monitoring tests passed. The returned
 c86ad2b submission output confirms **166437_0** (ALFWorld baseline) and
-**166438_1** (WebShop baseline). Index 2 was rejected by the submit-job quota;
-indices 2–5 remain unsubmitted. Retry the same command from frozen controller
-c86ad2bcef86184f3a3def2b1f053866aa22887f to preserve these accepted jobs and fill
-the remainder. The latest returned queue snapshot shows formal 166362
-and smoke 166370 both pending for Priority. Training revision c193e61 and SwanLab
-recovery remain unchanged.
+**166438_1** (WebShop baseline). Index 2 was initially rejected by the submit-job
+quota; the subsequent queue shows 166514_2, 166515_3, 166516_4 and 166517_5,
+confirming the remaining four submissions. The ALFWorld import failure and
+targeted recovery above supersede the earlier all-pending status.
 
 See `TRAINING.md` for actual submission/resume commands. Each array element uses
 two H200 and trains one benchmark/arm for 150 updates; all six elements may run

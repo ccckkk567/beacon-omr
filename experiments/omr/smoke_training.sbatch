@@ -7,6 +7,7 @@ set -euo pipefail
 CONTROL="$1"
 ROOT="$2"
 REV="$3"
+TRAIN_REV="$4"
 BENCHES=(alfworld webshop scienceworld)
 BENCH="${BENCHES[$((SLURM_ARRAY_TASK_ID % 3))]}"
 METHOD=baseline
@@ -18,7 +19,8 @@ mkdir -p "$TMPDIR"
 ATTEMPT="$ROOT/analysis/beacon-omr/smoke-${SLURM_ARRAY_JOB_ID}/$BENCH-$METHOD/attempts/${SLURM_JOB_ID}-${SLURM_ARRAY_TASK_ID}"
 trap 'mkdir -p "$ATTEMPT"; touch "$ATTEMPT/STOP"' USR1
 srun --ntasks=1 --kill-on-bad-exit=1 python3 -I -S -B \
-  "$CONTROL/experiments/omr/smoke_training.py" launch --root "$ROOT" --controller-revision "$REV" &
+  "$CONTROL/experiments/omr/smoke_training.py" launch --root "$ROOT" --controller-revision "$REV" \
+  --training-revision "$TRAIN_REV" &
 CHILD=$!
 set +e
 wait "$CHILD"

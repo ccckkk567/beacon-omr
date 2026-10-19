@@ -11,8 +11,11 @@ Each of the six independent conditions requests one hour, two H200, 32 CPUs and
 jobs. Shorter limits can fit backfill windows, but do not guarantee an immediate
 start; see [Slurm scheduling](https://slurm.schedmd.com/sched_config.html).
 
-The new controller directly imports and executes the unchanged frozen source
-`c193e617acf03d94e18cad023934e65e64ff6923`. `OMR_SOURCE_ROOT` and the reused
+By default the controller directly imports and executes the original frozen
+source `c193e617acf03d94e18cad023934e65e64ff6923`. An explicit
+`--training-revision <full-commit>` selects a fixed source for targeted retries;
+the selected revision is propagated through sbatch, launcher, training child,
+Ray source hook, provenance checks and checkpoint ownership. `OMR_SOURCE_ROOT` and the reused
 runtime's source hook select that same checkout for Ray workers. No package
 installation, model download, synthetic action or training monkeypatch is used.
 Both controller and training checkouts must be clean and match their revisions.
@@ -43,6 +46,30 @@ no smoke job. The user then authorized cancelling the six continuations
 The user returned successful cancellation/queue-removal and submission output:
 **smoke array 166370**, controller `f130cfe90c1b5e22a6ee1960f73cfa82997813cc`.
 GPU execution results are still pending. Do not submit a duplicate array.
+
+## ALFWorld import repair
+
+The first formal ALFWorld log failed before updates because learner-side module
+import pulled in simulator-only `alfworld.info`. The fix lazily resolves the
+same environment factory inside the catalog/worker runtime. To test both ALF
+arms at the fixed revision without duplicating the other benchmarks, create a
+clean `train-$TRAIN_REV` checkout and use:
+
+```bash
+python3 -I -S -B "$CONTROL/experiments/omr/smoke_training.py" submit \
+  --root "$ROOT" --controller-revision "$CONTROL_REV" \
+  --training-revision "$TRAIN_REV" --benchmark alfworld
+```
+
+This submits only indices `0,3%2`, each for one hour with unchanged resources,
+two updates, independent SwanLab runs and save-then-delete smoke checkpoints.
+The old affected pending jobs are 166362_3, 166370_0, 166370_3, 166437_0 and
+166515_3. Retire those exact pending tasks before replacement; preserve all
+WebShop/ScienceWorld jobs. Cancellation and new smoke IDs are not yet evidenced.
+Both subsequent formal ALFWorld arms must use the same fixed source; the old
+c193e61 source/checkpoint provenance must not be silently rewritten.
+
+## Outputs
 
 Logs: `logs/beacon-omr/smoke-<array>_<index>.out`.
 Outputs: `analysis/beacon-omr/smoke-<array>/<benchmark>-<method>/attempts/<job>-<index>/`.

@@ -88,15 +88,19 @@ The user returned a partial successful replacement submission from controller
 |---|---|---|
 | ALFWorld baseline | 166362_0 | 166437_0 submitted |
 | WebShop baseline | 166362_1 | 166438_1 submitted |
-| ScienceWorld baseline | 166362_2 | Quota rejected; not submitted |
-| ALFWorld full | 166362_3 | Not attempted yet |
-| WebShop full | 166362_4 | Not attempted yet |
-| ScienceWorld full | 166362_5 | Not attempted yet |
+| ScienceWorld baseline | 166362_2 | 166514_2, confirmed in later queue |
+| ALFWorld full | 166362_3 | 166515_3, confirmed in later queue |
+| WebShop full | 166362_4 | 166516_4, confirmed in later queue |
+| ScienceWorld full | 166362_5 | 166517_5, confirmed in later queue |
 
-Keep that exact frozen controller for retries. The same command skips accepted
-indices 0–1 and attempts indices 2–5 as quota permits. Do not delete or reset
-`jobs-replacement.json`, or switch controller revisions to retry this chain.
-No execution/optimizer output from these replacement jobs has been returned.
+Index 2 initially hit quota, but the later queue confirms all six replacements.
+Do not submit more or delete/reset `jobs-replacement.json`. The subsequent
+ALFWorld baseline import failure requires a new source for both ALFWorld arms.
+Recovery targets its pending continuation jobs 166437_0 and 166515_3 as well as
+the corresponding old-source formal/smoke work; their withdrawal is not yet
+confirmed. The other four continuations retain their original dependencies.
+New ALFWorld continuation dependencies will be arranged with its formal reruns
+after the fixed short-test results. No resumed optimizer output is evidenced.
 
 ## Resources and execution
 
@@ -157,6 +161,6 @@ additional fixtures cover the observed empty-accounting regression, exact
 confirmed IDs, active old jobs and failed live queries. All 20
 resume/replacement/monitoring tests passed locally. Real Slurm IDs and resumed
 GPU updates remain evidence to return from the HPC terminal. The first table
-records cancelled original submissions; the second records the two accepted
-replacements and four outstanding submissions. Resumed execution is not yet
-evidenced.
+records cancelled original submissions; the second records the six replacements.
+The ALFWorld repair requires targeted retirement/replacement as described above.
+Resumed execution is not yet evidenced.

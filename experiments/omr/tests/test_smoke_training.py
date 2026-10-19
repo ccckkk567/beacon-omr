@@ -139,6 +139,48 @@ class SmokeTests(unittest.TestCase):
             self.assertFalse(any(item.startswith('--dependency=') for item in argv))
             self.assertEqual(verify.call_args_list[1].args[1], TRAIN_REV)
 
+    def test_alfworld_repair_submits_only_both_alf_arms_at_explicit_source(self):
+        revision = 'e' * 40
+        with tempfile.TemporaryDirectory() as tmp, patch('sys.path', list(sys.path)), \
+                patch('experiments.omr.smoke_training.verify_checkout') as verify, \
+                patch('experiments.omr.smoke_training.output', return_value='123;orion') as invoke, \
+                patch('sys.argv', ['smoke_training.py', 'submit', '--root', tmp,
+                                  '--controller-revision', 'd' * 40, '--training-revision', revision,
+                                  '--benchmark', 'alfworld']), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(), 0)
+            argv = invoke.call_args.args[0]
+            self.assertIn('--array=0,3%2', argv)
+            self.assertIn('--time=01:00:00', argv)
+            self.assertEqual(argv[-1], revision)
+            self.assertEqual(verify.call_args_list[1].args,
+                             (Path(tmp) / 'code/beacon-omr-runs' / ('train-' + revision), revision))
+
+    def test_checkpoint_cleanup_matches_explicit_training_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = self.payload(Path(tmp))
+            self.evidence(payload)
+            payload['source_commit'] = 'e' * 40
+            with self.assertRaisesRegex(ValueError, 'ownership marker differs'):
+                cleanup_checkpoint(payload)
+            atomic_json(Path(payload['run_dir']) / 'smoke-owner.json',
+                        {'logical_run_id': payload['run_id'], 'delete_checkpoints_after_test': True,
+                         'source_commit': payload['source_commit']})
+            self.assertEqual(cleanup_checkpoint(payload)['status'], 'deleted')
+
+    def test_entry_rejects_old_payload_for_new_training_source(self):
+        with tempfile.TemporaryDirectory() as tmp, patch('sys.path', list(sys.path)), \
+                patch('experiments.omr.smoke_training.verify_checkout'), \
+                patch('experiments.omr.smoke_training.run_entry') as run, \
+                patch.dict('os.environ', {'SLURM_JOB_ID': '123'}):
+            payload = self.payload(Path(tmp))
+            launch_file = Path(tmp) / 'launch.json'
+            atomic_json(launch_file, payload)
+            with patch('sys.argv', ['smoke_training.py', 'entry', '--root', tmp,
+                       '--controller-revision', 'd' * 40, '--training-revision', 'e' * 40,
+                       '--launch', str(launch_file)]), self.assertRaisesRegex(ValueError, 'provenance differs'):
+                main()
+            run.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

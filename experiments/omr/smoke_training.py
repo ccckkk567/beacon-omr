@@ -85,7 +85,8 @@ def cleanup_checkpoint(payload):
     if payload['run_id'] != run_id or Path(payload['run_dir']).resolve() != expected:
         raise ValueError('Refusing checkpoint deletion outside the exact smoke run')
     marker = json.loads((expected / 'smoke-owner.json').read_text())
-    if marker != {'logical_run_id': run_id, 'delete_checkpoints_after_test': True, 'source_commit': TRAIN_REV}:
+    if marker != {'logical_run_id': run_id, 'delete_checkpoints_after_test': True,
+                  'source_commit': payload['source_commit']}:
         raise ValueError('Smoke ownership marker differs')
     target = expected / 'checkpoints'
     if target.is_symlink() or target.is_junction() or target.resolve().parent != expected:
@@ -196,7 +197,7 @@ def run_entry(payload):
     return 0 if report['status'] == 'passed' else 2
 
 
-def launch(root, training_repo, controller_revision):
+def launch(root, training_repo, controller_revision, training_revision=TRAIN_REV):
     from experiments.omr.launch_training import reused_runtime
     from experiments.omr.monitoring_readback import swanlab_key_from_file
     from experiments.omr.latest_checkpoint import atomic_json
@@ -220,13 +221,13 @@ def launch(root, training_repo, controller_revision):
         attempt = run_dir / 'attempts' / job
         attempt.mkdir(parents=True, exist_ok=False)
         atomic_json(run_dir / 'smoke-owner.json', {'logical_run_id': run_id,
-                    'delete_checkpoints_after_test': True, 'source_commit': TRAIN_REV})
+                    'delete_checkpoints_after_test': True, 'source_commit': training_revision})
         runtime = (Path(site['runtime']) if benchmark == 'webshop' else reused_runtime(
             root, 'beacon-omr-train-sci-v1', root / 'envs/gigpo-scienceworld-py312-v1'))
         simulator = (reused_runtime(root, 'beacon-omr-alf-simulator-v1', root / 'envs/gigpo-alfworld-py312-v1')
                      if benchmark == 'alfworld' else None)
         payload = {'root': str(root), 'benchmark': benchmark, 'method': method, 'run_id': run_id,
-                   'run_dir': str(run_dir), 'attempt_dir': str(attempt), 'source_commit': TRAIN_REV,
+                   'run_dir': str(run_dir), 'attempt_dir': str(attempt), 'source_commit': training_revision,
                    'controller_revision': controller_revision, 'array_id': array,
                    'model': site['model'], 'webshop': site['webshop'],
                    'runtime': str(runtime), 'simulator_python': str(simulator / 'bin/python') if simulator else None}
@@ -253,6 +254,7 @@ def launch(root, training_repo, controller_revision):
         atomic_json(attempt / 'allocation.json', {'started_at': started, 'allocated_gpus': 2, 'slurm_job_id': job})
         result = subprocess.run([str(runtime / 'bin/python'), '-I', '-B', str(Path(__file__).resolve()),
             'entry', '--root', str(root), '--controller-revision', controller_revision,
+            '--training-revision', training_revision,
             '--launch', str(attempt / 'launch.json')], cwd=training_repo, env=env)
         elapsed = time.time() - started
         atomic_json(attempt / 'allocation.json', {'started_at': started, 'allocated_gpus': 2,
@@ -268,31 +270,44 @@ def main():
     parser.add_argument('mode', choices=['submit', 'launch', 'entry'])
     parser.add_argument('--root', required=True)
     parser.add_argument('--controller-revision', required=True)
+    parser.add_argument('--training-revision', default=TRAIN_REV,
+                        help='Explicit frozen training source; defaults to the original c193e61 run')
+    parser.add_argument('--benchmark', choices=['all', *BENCHMARKS], default='all',
+                        help='Submit both arms for one benchmark, or the original six-condition array')
     parser.add_argument('--launch')
     args = parser.parse_args()
+    if not all(re.fullmatch(r'[0-9a-f]{40}', value)
+               for value in (args.controller_revision, args.training_revision)):
+        parser.error('Use full controller and training revisions')
     root = Path(args.root).absolute()
-    training_repo = root / 'code/beacon-omr-runs' / ('train-' + TRAIN_REV)
+    training_repo = root / 'code/beacon-omr-runs' / ('train-' + args.training_revision)
     verify_checkout(CONTROL, args.controller_revision)
-    verify_checkout(training_repo, TRAIN_REV)
+    verify_checkout(training_repo, args.training_revision)
     # Deliberately do not import experiments/verl from the controller checkout.
     sys.path.insert(0, str(training_repo))
     if args.mode == 'submit':
+        if args.benchmark == 'all':
+            indices = '0-5%6'
+        else:
+            index = BENCHMARKS.index(args.benchmark)
+            indices = f'{index},{index + 3}%2'
         logs = root / 'logs/beacon-omr'
         logs.mkdir(parents=True, exist_ok=True)
         job = output(['sbatch', '--parsable', '--account=prjsnnn0000269', '--partition=testqueue',
             '--nodes=1', '--ntasks=1', '--gres=gpu:h200:2', '--cpus-per-task=32', '--mem=256G',
-            '--time=01:00:00', '--array=0-5%6', '--job-name=omr-smoke', '--chdir=' + str(root),
+            '--time=01:00:00', '--array=' + indices, '--job-name=omr-smoke', '--chdir=' + str(root),
             '--output=' + str(logs / 'smoke-%A_%a.out'), str(CONTROL / 'experiments/omr/smoke_training.sbatch'),
-            str(CONTROL), str(root), args.controller_revision]).split(';')[0]
-        print('Smoke array: ' + job + ' (0/1/2=ALF/Web/Sci baseline; 3/4/5=ALF/Web/Sci full)')
+            str(CONTROL), str(root), args.controller_revision, args.training_revision]).split(';')[0]
+        print('Smoke array: ' + job + ' (indices ' + indices
+              + '; 0/1/2=ALF/Web/Sci baseline; 3/4/5=ALF/Web/Sci full)')
         print('Logs: ' + str(logs / ('smoke-' + job + '_<index>.out')))
         return 0
     if not os.environ.get('SLURM_JOB_ID'):
         parser.error('Native training must run inside an allocated GPU job')
     if args.mode == 'launch':
-        return launch(root, training_repo, args.controller_revision)
+        return launch(root, training_repo, args.controller_revision, args.training_revision)
     payload = json.loads(Path(args.launch).read_text())
-    if payload['source_commit'] != TRAIN_REV or payload['controller_revision'] != args.controller_revision:
+    if payload['source_commit'] != args.training_revision or payload['controller_revision'] != args.controller_revision:
         raise ValueError('Launch provenance differs')
     return run_entry(payload)
 

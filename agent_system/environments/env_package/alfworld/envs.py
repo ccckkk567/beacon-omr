@@ -23,7 +23,13 @@ import torchvision.transforms as T
 import ray
 from agent_system.milestone_reuse.native_restart import RestartWorkerMixin
 
-from agent_system.environments.env_package.alfworld.alfworld.agents.environment import get_environment
+
+def get_environment(env_type):
+    # Importing the vendored package also imports installed alfworld.info.
+    # With worker_python configured, only the simulator runtime owns ALFWorld
+    # and TextWorld; the learner must be able to import/serialize this module.
+    from agent_system.environments.env_package.alfworld.alfworld.agents.environment import get_environment as resolve
+    return resolve(env_type)
 
 ALF_ACTION_LIST=["pass", "goto", "pick", "put", "open", "close", "toggle", "heat", "clean", "cool", "slice", "inventory", "examine", "look"]
 # ALF_ITEM_LIST =

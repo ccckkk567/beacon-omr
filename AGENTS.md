@@ -67,8 +67,20 @@ Current user overrides to the execution specification:
   the latest returned queue snapshot.
   Controller c86ad2bcef86184f3a3def2b1f053866aa22887f successfully submitted
   166437_0 (ALFWorld baseline) and 166438_1 (WebShop baseline). Index 2 hit the
-  submit-job quota; indices 2–5 remain unsubmitted. Retry from that same frozen
-  controller with identical arguments to skip indices 0–1 and fill the remainder.
+  submit-job quota initially. The later queue snapshot confirms indices 2–5
+  were submitted as 166514_2, 166515_3, 166516_4, 166517_5. Do not submit duplicates.
+- The first returned ALFWorld baseline execution (attempt 166509-0, source
+  c193e61) failed before updates: envs.py imported installed alfworld.info in the
+  learner instead of deferring simulator-only imports to worker_python. The fix
+  lazily resolves the same vendored factory. ALFWorld baseline/full must both use
+  the new fixed source; never edit the old frozen checkout or migrate checkpoints.
+  The latest queue showed 166362_1 (WebShop baseline) RUNNING, formal indices
+  2–5 pending, all smoke indices pending, and all six continuations pending.
+  Replace only the affected pending ALFWorld jobs (166362_3, 166370_0, 166370_3,
+  166437_0, 166515_3), then submit ALFWorld-only baseline/full smoke jobs at the
+  fixed revision. Their cancellation/new submission output is not yet returned.
+  WebShop and ScienceWorld continue at c193e61. Formal ALFWorld reruns and their
+  new continuation dependencies remain to arrange after the fixed short runs.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
