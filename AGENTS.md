@@ -46,7 +46,12 @@ Current user overrides to the execution specification:
   using the frozen c193e61 training source and isolated outputs/SwanLab project.
   The user explicitly approved real checkpoint saving followed by immediate
   deletion of these owned smoke checkpoints only, preserving save receipts/logs.
-  Do not change the formal array or its queued continuation chain for this test.
+  Preserve the formal array. After the short-test submission hit
+  QOSMaxSubmitJobPerUserLimit, the user explicitly requested withdrawing the six
+  continuation jobs listed above to free slots for all six smoke conditions.
+  Cancellation and successful smoke submission have not yet been evidenced.
+  The original continuation submission ledger remains historical; do not treat
+  its old child IDs as an active continuation chain after withdrawal.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

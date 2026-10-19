@@ -18,6 +18,12 @@ same frozen c193e61 training source, full B16/G8/H shapes and separate outputs.
 The user approved saving then deleting the smoke checkpoints after recording
 the save evidence. Six targeted local fixtures passed; no smoke GPU result or
 submission ID has yet been returned. See `SHORT_TRAINING.md`.
+The first smoke submission was rejected by Slurm with
+`QOSMaxSubmitJobPerUserLimit`; it created no smoke job and ran no training code.
+The user then explicitly requested cancelling the six continuation jobs
+166364_0 through 166369_5 and submitting all six smoke conditions in their place.
+Formal array 166362 remains authorized and unchanged. Withdrawal/submission
+output is still pending; the old continuation IDs are historical receipts.
 
 See `TRAINING.md` for actual submission/resume commands. Each array element uses
 two H200 and trains one benchmark/arm for 150 updates; all six elements may run

@@ -36,8 +36,11 @@ python3 -I -S -B "$CONTROL/experiments/omr/smoke_training.py" submit \
 
 Array indices 0/1/2 are ALFWorld/WebShop/ScienceWorld baseline; 3/4/5 are full.
 Each invocation creates a new smoke array. Do not repeatedly submit while the
-same short test is queued. The existing formal array 166362 and continuations
-166364_0 through 166369_5 are neither modified nor cancelled.
+same short test is queued. The existing formal array 166362 stays unchanged.
+The first submission was rejected by `QOSMaxSubmitJobPerUserLimit` and produced
+no smoke job. The user then authorized cancelling the six continuations
+166364_0 through 166369_5 to free submission slots for all six short tests.
+Cancellation and a successful smoke submission still await returned evidence.
 
 Logs: `logs/beacon-omr/smoke-<array>_<index>.out`.
 Outputs: `analysis/beacon-omr/smoke-<array>/<benchmark>-<method>/attempts/<job>-<index>/`.
