@@ -414,3 +414,16 @@ Real environment restore, two-GPU updates, monitoring and resume need evidence
 from actual execution. Unit fixtures are not evidence of completed HPC training.
 Checkpoint replacement must commit the new complete generation before removing
 the previous one. Preserve full scientific records and active restore payloads.
+
+Latest user override: apply the full-batch plan on branch
+codex/omr-restore-fullbatch-20261019, based on repair e3e36b4. The previous four
+new submissions already used legacy/sync; do not claim they had enabled active.
+User explicitly requested stopping 167422,167425,167426,167427 and resubmitting
+after this change. Returned accounting confirms all four CANCELLED by 173020,
+with no live exact-ID queue rows. submit_fullbatch.py may resubmit exactly these
+four conditions only after checking original receipts and no update/checkpoint
+state, into fresh fullbatch-20261019 outputs. Explicit legacy generation,
+independently preserved writer, named standalone jobs, no automatic resumes.
+Preserve old baselines 167234_0/167237_1 and children 167235_0/167238_1, unrelated
+jobs, all frozen sources and historical outputs. No hot patch/migration. New
+submission IDs and actual partial-done full-batch GPU evidence are pending.

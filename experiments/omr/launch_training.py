@@ -15,6 +15,7 @@ sys.path.insert(0, str(REPO))
 from experiments.omr.latest_checkpoint import atomic_json
 from experiments.omr.preparation import write_runtime_paths
 from experiments.omr.run_paths import formal_run_dir, formal_manifest_path
+from experiments.omr.execution_profiles import resolve_profiles
 
 
 def reused_runtime(root, name, base):
@@ -61,6 +62,8 @@ def main():
         site = json.loads(Path(args.prepared_report).with_name('site.json').read_text())
         if previous['status'] != 'prepared_and_tested' or previous['source_commit'] != site['source_commit']:
             raise ValueError('Expected the accepted preparation report and its matching asset binding')
+        commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip()
+        profiles = resolve_profiles(run_dir, commit)
         job = os.environ['SLURM_JOB_ID'] + '-' + os.environ.get('SLURM_ARRAY_TASK_ID', 'single')
         attempt = run_dir / 'attempts' / job
         attempt.mkdir(parents=True, exist_ok=False)
@@ -71,7 +74,6 @@ def main():
         if args.benchmark == 'alfworld':
             actor_runtime = reused_runtime(root, 'beacon-omr-alf-simulator-v1',
                                            root / 'envs/gigpo-alfworld-py312-v1')
-        commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip()
         payload = {'root': str(root), 'benchmark': args.benchmark, 'method': args.method, 'run_id': run_id,
             'run_dir': str(run_dir), 'attempt_dir': str(attempt), 'source_commit': commit,
             'model': site['model'], 'webshop': site['webshop'], 'prepared_source': site['source_commit'],
@@ -79,20 +81,7 @@ def main():
         if args.run_tag:
             payload.update(run_tag=args.run_tag,
                 manifest_path=str(formal_manifest_path(root, args.benchmark, args.run_tag)))
-        profile_file = run_dir / 'execution-profile.json'
-        if profile_file.is_file():
-            profile = json.loads(profile_file.read_text())
-            if profile['revision'] != commit:
-                raise ValueError('Execution profile source differs from frozen training source')
-            for key in ('execution_profile_id', 'writer_profile_id'):
-                payload[key] = profile[key]
-        lineage_file = run_dir / 'repair-lineage.json'
-        if lineage_file.is_file():
-            lineage = json.loads(lineage_file.read_text())
-            if lineage['revision'] != commit:
-                raise ValueError('Repair lineage differs from frozen training source')
-            for key in ('execution_profile_id', 'writer_profile_id', 'parent_failed_run', 'parent_attempt'):
-                payload[key] = lineage[key]
+        payload.update(profiles)
         atomic_json(attempt / 'launch.json', payload)
         atomic_json(run_dir / 'progress.json', {'status': 'starting', 'attempt': str(attempt),
             'source_commit': commit, 'checkpoint_pointer': str(run_dir / 'checkpoints/latest.json')})

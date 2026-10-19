@@ -1,5 +1,16 @@
 # Execution status — 2026-10-19
 
+## Current full-batch release
+
+See [full-batch release report](FULL_BATCH_ROLLBACK_20261019.md). User-returned
+accounting confirms 167422,167425,167426,167427 CANCELLED. Their submission
+profiles were already legacy/sync. The newly authorized resubmission uses clean
+branch codex/omr-restore-fullbatch-20261019, explicit full batches, independent
+named jobs and no new resumes. Actual new IDs/GPU acceptance are pending.
+Keep running old baselines 167234_0/167237_1 and their existing children.
+The sections below describe historical submissions, not instructions to repeat
+old recovery controllers or to preserve the four now-cancelled targets.
+
 ## Current repair branch and standalone submission policy
 
 The user now authorized upgrading the remaining queued conditions to the repair
