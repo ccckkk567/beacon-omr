@@ -55,6 +55,10 @@ Current user overrides to the execution specification:
   Do not duplicate this smoke array. Its GPU execution results are still pending.
   The original continuation submission ledger remains historical; do not treat
   its old child IDs as an active continuation chain after withdrawal.
+- The user now requests replacing those six cancelled continuations. Use the
+  explicit --replace-cancelled submission path, preserving jobs.json and writing
+  jobs-replacement.json. It verifies the old cancellations and retains any new
+  accepted jobs across quota-rejection retries. Replacement IDs are not yet known.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

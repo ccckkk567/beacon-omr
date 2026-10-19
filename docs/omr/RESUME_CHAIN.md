@@ -15,9 +15,9 @@ The user returned successful submission output on 2026-10-19:
 | WebShop full | 166362_4 | 166368_4 |
 | ScienceWorld full | 166362_5 | 166369_5 |
 
-Orchestration revision: `6993666a2a8305072dbb3024fcec76100fa943ec`.
-Keep that existing orchestration checkout if repeating the idempotent command;
-do not submit an additional chain from a different controller revision.
+Original orchestration revision: `6993666a2a8305072dbb3024fcec76100fa943ec`.
+That controller's original command only reprints its historical submission IDs;
+use the explicit replacement procedure below for the cancelled jobs.
 These receipts establish submission, not running status or completed GPU updates.
 
 Later the six-condition smoke submission was rejected by the submit-job quota.
@@ -34,13 +34,43 @@ model, optimizer and OMR checkpoint state. The newer checkout provides only
 submission and checkpoint gating. It does not migrate training code or alter
 the protocol signature of an existing checkpoint.
 
-Run from the published orchestration checkout on the login node:
+The original first-submission command, retained for reference, was:
 
 ```bash
 python3 -I -S -B "$CONTROL/experiments/omr/resume_chain.py" submit \
   --root "$ROOT" --parent-array 166362 \
   --training-revision c193e617acf03d94e18cad023934e65e64ff6923
 ```
+
+## Replace the six cancelled continuations
+
+The user subsequently requested another attempt to submit all six continuations.
+From the new published, frozen orchestration checkout on the login node, run:
+
+```bash
+python3 -I -S -B "$CONTROL/experiments/omr/resume_chain.py" submit \
+  --root "$ROOT" --parent-array 166362 \
+  --training-revision c193e617acf03d94e18cad023934e65e64ff6923 \
+  --replace-cancelled
+```
+
+This preserves the original `jobs.json` and creates `jobs-replacement.json` in
+the same resume-chain directory. It binds to the six original receipts and
+requires [sacct](https://slurm.schedmd.com/sacct.html) to report all six old jobs
+as CANCELLED before making any new submissions. Missing accounting records or
+another state stop submission; absence from the queue alone is not used here.
+The original parent array and frozen training source are verified as before.
+The same directory lock prevents concurrent submissions of this replacement.
+
+Repeat the same command from the same frozen controller to finish a partial
+replacement. Accepted child IDs are preserved and skipped. A definite
+`QOSMaxSubmitJobPerUserLimit` rejection is recorded as retryable; ambiguous
+network replies remain blocked pending inspection to avoid duplicates. After
+all six submissions succeed, another invocation only prints their recorded IDs.
+This is one replacement round, not an automatic loop that recreates jobs after
+future cancellation. Replacement job IDs have not yet been returned.
+
+## Resources and execution
 
 Each singleton child array retains its original index. Child 0 depends on
 `afterany:166362_0`, child 1 on `afterany:166362_1`, and so on. Each requests
@@ -92,6 +122,10 @@ needed. No logging API keys are stored in submission metadata.
 Local fixtures cover all six individual dependencies, repeat-submission
 idempotence, uncertain submission handling, wrong parent/source rejection,
 missing/damaged checkpoints, completed-run skipping, outstanding final
-evaluation, and SwanLab sequence/rollback behavior. Real Slurm IDs and resumed
+evaluation, and SwanLab sequence/rollback behavior. Five replacement fixtures
+also cover cancellation evidence, preserving the historical ledger, partial
+quota rejection/retry, ambiguous replies and original-receipt binding. All 16
+resume/replacement/monitoring tests passed locally. Real Slurm IDs and resumed
 GPU updates remain evidence to return from the HPC terminal. The Slurm IDs above
-have now been returned; resumed execution has not.
+are the cancelled original submissions; replacement IDs and resumed execution
+have not yet been returned.

@@ -27,7 +27,8 @@ def condition(index):
 
 
 def command(argv):
-    return subprocess.check_output([str(item) for item in argv], text=True).strip()
+    kwargs = {'stderr': subprocess.PIPE} if argv[0] == 'sbatch' else {}
+    return subprocess.check_output([str(item) for item in argv], text=True, **kwargs).strip()
 
 
 def clean_revision(repo, expected=None):
@@ -65,11 +66,54 @@ def validate_parent(output, parent, root, training_repo):
         raise ValueError('Could not verify all six parent elements; no new submissions made')
 
 
+def replacement_jobs(original_ledger, root, training_revision, parent, report):
+    """Bind a single replacement round to the immutable original receipts."""
+    state = json.loads(original_ledger.read_text())
+    expected = {'parent_array': str(parent), 'root': str(root),
+                'training_revision': training_revision, 'prepared_report': str(report)}
+    if any(state['binding'].get(key) != value for key, value in expected.items()):
+        raise ValueError('Original resume chain belongs to a different training request')
+    if set(state['children']) != {str(i) for i in range(6)}:
+        raise ValueError('Replacement requires six original submission receipts')
+    jobs = {}
+    for index in range(6):
+        row = state['children'][str(index)]
+        benchmark, method = condition(index)
+        array_id = row.get('array_id', '')
+        job_id = f'{array_id}_{index}'
+        if (row.get('status') != 'submitted' or not re.fullmatch(r'[1-9]\d*', array_id)
+                or row.get('job_id') != job_id or row.get('benchmark') != benchmark
+                or row.get('method') != method or row.get('index') != index):
+            raise ValueError('Original resume receipt is incomplete or mismatched')
+        jobs[str(index)] = job_id
+    return jobs
+
+
+def verify_cancelled(jobs, invoke):
+    """Missing accounting data or any other state is not cancellation evidence."""
+    output = invoke(['sacct', '-X', '-n', '-P', '-j', ','.join(jobs.values()),
+                     '--format=JobID%40,State%40'])
+    observed = {}
+    for line in output.splitlines():
+        fields = [part.strip() for part in line.split('|')]
+        if len(fields) != 2 or fields[0] not in jobs.values() or not fields[1]:
+            raise ValueError('Unrecognized cancellation accounting output: ' + line)
+        if fields[0] in observed:
+            raise ValueError('Duplicate accounting records for ' + fields[0])
+        observed[fields[0]] = fields[1].split()[0]
+    if any(observed.get(job) != 'CANCELLED' for job in jobs.values()):
+        raise RuntimeError('All six original resumes must be recorded as CANCELLED before replacement: '
+                           + json.dumps(observed, sort_keys=True))
+    return observed
+
+
 def submit_chain(root, training_repo, training_revision, controller_revision, parent,
-                 report, ledger, invoke=command):
+                 report, ledger, invoke=command, replaces=None):
     binding = {'schema': 1, 'parent_array': str(parent), 'root': str(root),
                'training_revision': training_revision, 'controller_revision': controller_revision,
                'controller_repo': str(REPO), 'prepared_report': str(report)}
+    if replaces is not None:
+        binding['replaces_cancelled_jobs'] = replaces
     if ledger.exists():
         state = json.loads(ledger.read_text())
         if state['binding'] != binding:
@@ -77,13 +121,15 @@ def submit_chain(root, training_repo, training_revision, controller_revision, pa
     else:
         state = {'binding': binding, 'children': {}}
     for index, row in state['children'].items():
-        if row['status'] != 'submitted':
+        if row['status'] not in {'submitted', 'rejected_quota'}:
             raise RuntimeError(f'Submission outcome for index {index} is uncertain; inspect Slurm before retrying')
-    if len(state['children']) == 6:
+    if len(state['children']) == 6 and all(row['status'] == 'submitted' for row in state['children'].values()):
         return state  # Idempotent even after the parent disappears from scontrol.
+    if replaces is not None:
+        state['cancelled_predecessors'] = verify_cancelled(replaces, invoke)
     validate_parent(invoke(['scontrol', 'show', 'job', '-o', str(parent)]), parent, root, training_repo)
     for index in range(6):
-        if str(index) in state['children']:
+        if state['children'].get(str(index), {}).get('status') == 'submitted':
             continue
         benchmark, method = condition(index)
         dependency = f'afterany:{parent}_{index}'
@@ -98,7 +144,20 @@ def submit_chain(root, training_repo, training_revision, controller_revision, pa
                'dependency': dependency, 'command': argv}
         state['children'][str(index)] = row
         atomic_json(ledger, state)  # A crash after sbatch must not silently cause duplicates.
-        reply = invoke(argv)
+        try:
+            reply = invoke(argv)
+        except subprocess.CalledProcessError as error:
+            detail = error.stderr or ''
+            if isinstance(detail, bytes):
+                detail = detail.decode(errors='replace')
+            if (not error.output and 'QOSMaxSubmitJobPerUserLimit' in detail
+                    and 'Batch job submission failed: Job violates accounting/QOS policy' in detail):
+                row.update(status='rejected_quota', error=detail.strip())
+                atomic_json(ledger, state)
+                raise RuntimeError(f'Slurm submit-job quota rejected index {index}; already submitted jobs '
+                                   'are retained. Rerun this same command when slots are available.') from error
+            raise RuntimeError(f'Submission outcome for index {index} is uncertain; inspect Slurm before retrying. '
+                               + detail.strip()) from error
         match = re.fullmatch(r'(\d+)(?:;[^\s;]+)?', reply)
         if not match:
             raise RuntimeError('Unrecognized sbatch reply; inspect Slurm before retrying: ' + reply)
@@ -141,9 +200,13 @@ def main():
     parser.add_argument('--parent-array', required=True, type=int)
     parser.add_argument('--training-revision', required=True)
     parser.add_argument('--index', type=int)
+    parser.add_argument('--replace-cancelled', action='store_true',
+                        help='Submit one replacement round for the six cancelled jobs in the original ledger')
     args = parser.parse_args()
     if not re.fullmatch('[0-9a-f]{40}', args.training_revision) or args.parent_array <= 0:
         parser.error('Use a full training revision and a positive parent array ID')
+    if args.replace_cancelled and args.mode != 'submit':
+        parser.error('--replace-cancelled is only valid for submit')
     root = Path(args.root).absolute()
     training_repo = root / 'code/beacon-omr-runs' / ('train-' + args.training_revision)
     controller_revision = clean_revision(REPO)
@@ -173,10 +236,20 @@ def main():
     import fcntl
     with (ledger_dir / '.submit.lock').open('a+') as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        state = submit_chain(root, training_repo, args.training_revision, controller_revision,
-                             args.parent_array, report, ledger_dir / 'jobs.json')
+        replaces = None
+        ledger = ledger_dir / 'jobs.json'
+        if args.replace_cancelled:
+            replaces = replacement_jobs(ledger, root, args.training_revision, args.parent_array, report)
+            ledger = ledger_dir / 'jobs-replacement.json'
+        try:
+            state = submit_chain(root, training_repo, args.training_revision, controller_revision,
+                                 args.parent_array, report, ledger, replaces=replaces)
+        except RuntimeError as error:
+            print(str(error), file=sys.stderr)
+            print('Submission record: ' + str(ledger), file=sys.stderr)
+            return 2
     print('Resume jobs: ' + ', '.join(state['children'][str(i)]['job_id'] for i in range(6)))
-    print('Submission record: ' + str(ledger_dir / 'jobs.json'))
+    print('Submission record: ' + str(ledger))
     return 0
 
 

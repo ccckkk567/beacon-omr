@@ -30,6 +30,13 @@ before successful submission of smoke array 166370. Formal array 166362 remains
 authorized and unchanged. The old continuation IDs are historical receipts,
 not an active continuation chain; do not duplicate the submitted smoke array.
 
+The user now requests resubmission of the six cancelled continuations. The
+explicit `resume_chain.py submit --replace-cancelled` path preserves the old
+ledger, verifies cancellation records, and records new IDs separately. Definite
+quota rejection can be retried without duplicating accepted jobs. The 16 targeted
+resume/replacement/monitoring tests passed; replacement submission output is
+still pending. Training revision c193e61 and SwanLab recovery remain unchanged.
+
 See `TRAINING.md` for actual submission/resume commands. Each array element uses
 two H200 and trains one benchmark/arm for 150 updates; all six elements may run
 concurrently (twelve H200 total), subject to Slurm allocation, and fail independently.
