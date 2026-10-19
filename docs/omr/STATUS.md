@@ -12,6 +12,13 @@ See `RESUME_CHAIN.md` for the recorded mapping; do not submit another chain.
 The 11 targeted resume-chain/monitoring fixtures passed locally. Submission is
 now evidenced, but running status and resumed GPU updates are not yet evidenced.
 
+The user requested short real-training jobs while the formal array queues.
+One-hour, two-update diagnostics for all six conditions are prepared, using the
+same frozen c193e61 training source, full B16/G8/H shapes and separate outputs.
+The user approved saving then deleting the smoke checkpoints after recording
+the save evidence. Six targeted local fixtures passed; no smoke GPU result or
+submission ID has yet been returned. See `SHORT_TRAINING.md`.
+
 See `TRAINING.md` for actual submission/resume commands. Each array element uses
 two H200 and trains one benchmark/arm for 150 updates; all six elements may run
 concurrently (twelve H200 total), subject to Slurm allocation, and fail independently.

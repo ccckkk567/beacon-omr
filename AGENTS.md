@@ -41,6 +41,12 @@ Current user overrides to the execution specification:
   166364_0, 166365_1, 166366_2, 166367_3, 166368_4, 166369_5 respectively.
   They use orchestration revision 6993666a2a8305072dbb3024fcec76100fa943ec.
   Do not submit an additional chain. No optimizer/resume logs have been returned yet.
+- The user subsequently requested short real-training jobs to detect errors while
+  the formal array queues. Prepare six independent one-hour/two-update smoke runs
+  using the frozen c193e61 training source and isolated outputs/SwanLab project.
+  The user explicitly approved real checkpoint saving followed by immediate
+  deletion of these owned smoke checkpoints only, preserving save receipts/logs.
+  Do not change the formal array or its queued continuation chain for this test.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
