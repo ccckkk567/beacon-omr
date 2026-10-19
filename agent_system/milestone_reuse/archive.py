@@ -33,7 +33,7 @@ class Archive:
             return {"admitted": False, "reason": "unverified"}
         # Discovery is historical even when capacity prevents admission.
         self.seen_categories.setdefault(entry.task.key, set()).add(entry.coverage_key)
-        if entry.checkpoint_id in self.entries:
+        if entry.checkpoint_id in self.entries or entry.checkpoint_id in self.retired:
             return {"admitted": False, "reason": "duplicate_id"}
         siblings = self.for_task(entry.task.key)
         exact = [e for e in siblings if e.condition_signature == entry.condition_signature and

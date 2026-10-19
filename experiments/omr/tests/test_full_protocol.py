@@ -200,6 +200,9 @@ class FullIntegrationTests(unittest.TestCase):
             self.observer.load_state_dict(state)
 
     def test_complete_model_checkpoint_carries_matching_archive_and_sampler(self):
+        from omegaconf import open_dict
+        with open_dict(self.config.omr):
+            self.config.omr.writer_profile_id = 'bounded-v1'
         self.collect(0, ['progress'])
         self.observer.commit(1)
         tree = ast.parse((REPO / 'experiments/omr/training.py').read_text())
@@ -238,6 +241,11 @@ class FullIntegrationTests(unittest.TestCase):
         state = torch.load(directory / 'protocol.pt', weights_only=False)
         self.assertTrue(state['archive_enabled'])
         self.assertEqual(state['omr'], expected)
+        watermark = state['log_watermarks']['train_observer']
+        self.assertEqual(watermark['enqueued'], watermark['durable'])
+        self.assertTrue(watermark['chunks'])
+        for chunk in watermark['chunks']:
+            self.assertEqual(file_sha256(chunk['path']), chunk['sha256'])
         self.collect(1, ['wait'])
         self.observer.commit(2)
         trainer._load_checkpoint()
@@ -245,6 +253,11 @@ class FullIntegrationTests(unittest.TestCase):
         self.assertEqual(self.observer.controller.committed_update, 1)
         self.assertEqual(self.observer.state_dict(), expected)
         self.assertEqual(trainer.train_dataloader.cursor, 16)
+        # New failed-attempt chunks never mutate the checkpoint's references.
+        self.assertTrue(all(file_sha256(c['path']) == c['sha256'] for c in watermark['chunks']))
+        Path(watermark['chunks'][0]['path']).write_bytes(b'corrupted scientific record')
+        with self.assertRaisesRegex(ValueError, 'Immutable scientific chunk'):
+            trainer._load_checkpoint()
 
 
 class EventAndReplayTests(unittest.TestCase):

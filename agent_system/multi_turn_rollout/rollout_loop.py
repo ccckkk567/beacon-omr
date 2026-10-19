@@ -21,6 +21,7 @@ from verl.utils.model import compute_position_id_with_mask
 import verl.utils.torch_functional as verl_F
 from transformers import PreTrainedTokenizer
 import uuid
+import time
 from verl.models.transformers.qwen2_vl import get_rope_index
 from agent_system.multi_turn_rollout.utils import process_image, to_list_of_dict, torch_to_numpy, filter_group_data
 from agent_system.environments import EnvironmentManagerBase
@@ -300,12 +301,17 @@ class TrajectoryCollector:
         # Initial observations from the environment
         observer = getattr(envs, 'omr_observer', None)
         reset_kwargs = gen_batch.non_tensor_batch.pop('env_kwargs', None)
+        started_reset = time.monotonic()
+        if observer is not None:
+            observer.phase('restore', force=True)
         if observer is not None and hasattr(observer, 'initialize'):
             obs, infos = observer.initialize()
         else:
             obs, infos = envs.reset(kwargs=reset_kwargs)
         if observer is not None:
             observer.reset(obs, infos)
+            if not hasattr(observer, 'initialize'):
+                observer.add_timing('restore_wall_s', time.monotonic() - started_reset)
 
         lenght_obs = len(obs['text']) if obs['text'] is not None else len(obs['image'])
         assert len(gen_batch.batch) == lenght_obs, f"gen_batch size {len(gen_batch.batch)} does not match obs size {lenght_obs}"
@@ -361,7 +367,6 @@ class TrajectoryCollector:
                 text_actions[i] = ''
             if observer is not None:
                 observer.phase('env_step', _step)
-            import time
             started_env = time.monotonic()
             try:
                 next_obs, rewards, dones, infos = envs.step(text_actions)

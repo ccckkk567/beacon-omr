@@ -21,13 +21,13 @@ from experiments.omr.run_paths import formal_run_id
 BENCHMARKS = ('alfworld', 'webshop', 'scienceworld')
 
 
-def submit_once(state, key, argv, ledger, invoke):
+def submit_once(state, key, argv, ledger, invoke, *, id_field='array_id'):
     existing = state['jobs'].get(key)
     if existing is not None:
         if existing['command'] != argv:
             raise ValueError('Recorded submission command differs for ' + key)
         if existing['status'] == 'submitted':
-            return existing['array_id']
+            return existing[id_field]
         if existing['status'] != 'rejected_quota':
             raise RuntimeError('Submission outcome is uncertain for ' + key + '; inspect Slurm before retrying')
     row = {'status': 'submitting', 'command': argv}
@@ -50,7 +50,7 @@ def submit_once(state, key, argv, ledger, invoke):
     match = re.fullmatch(r'(\d+)(?:;[^\s;]+)?', reply)
     if not match:
         raise RuntimeError('Unrecognized sbatch reply for ' + key + '; inspect Slurm before retrying: ' + reply)
-    row.update(status='submitted', array_id=match[1])
+    row.update(status='submitted', **{id_field: match[1]})
     atomic_json(ledger, state)
     return match[1]
 

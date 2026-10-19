@@ -79,6 +79,20 @@ def main():
         if args.run_tag:
             payload.update(run_tag=args.run_tag,
                 manifest_path=str(formal_manifest_path(root, args.benchmark, args.run_tag)))
+        profile_file = run_dir / 'execution-profile.json'
+        if profile_file.is_file():
+            profile = json.loads(profile_file.read_text())
+            if profile['revision'] != commit:
+                raise ValueError('Execution profile source differs from frozen training source')
+            for key in ('execution_profile_id', 'writer_profile_id'):
+                payload[key] = profile[key]
+        lineage_file = run_dir / 'repair-lineage.json'
+        if lineage_file.is_file():
+            lineage = json.loads(lineage_file.read_text())
+            if lineage['revision'] != commit:
+                raise ValueError('Repair lineage differs from frozen training source')
+            for key in ('execution_profile_id', 'writer_profile_id', 'parent_failed_run', 'parent_attempt'):
+                payload[key] = lineage[key]
         atomic_json(attempt / 'launch.json', payload)
         atomic_json(run_dir / 'progress.json', {'status': 'starting', 'attempt': str(attempt),
             'source_commit': commit, 'checkpoint_pointer': str(run_dir / 'checkpoints/latest.json')})

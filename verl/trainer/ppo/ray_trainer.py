@@ -1359,6 +1359,8 @@ class RayPPOTrainer:
                                      self.global_steps % self.config.trainer.save_freq == 0):
                         with _timer('save_checkpoint', timing_raw):
                             self._save_checkpoint()
+                        if hasattr(self, 'checkpoint_save_wall_s'):
+                            metrics['perf/checkpoint/save_wall_s'] = self.checkpoint_save_wall_s
                     # validate
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
                         with _timer("testing", timing_raw):

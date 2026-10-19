@@ -1,6 +1,13 @@
 # Execution status — 2026-10-19
 
-## Current: all six repaired formal tasks and continuations submitted
+## Current repair branch and standalone submission policy
+See [repair execution report](REPAIR_EXECUTION_20261019.md). Local CPU fixtures
+pass; native ALFWorld/GPU acceptance is pending. Repair only failed ALFWorld Full
+after exact source/run/state checks. Current baseline and other jobs are KEEP.
+New submissions are independent named normal jobs, no arrays, no automatic
+continuations. Preserve per-turn sync/sleep/wake and default legacy/sync profile.
+
+## Previous frozen submission: six formal tasks and continuations
 
 The user returned successful submissions from controller
 **1d30ff32a790993b2b4738b32303e14d2282f1a4**, with all training frozen at

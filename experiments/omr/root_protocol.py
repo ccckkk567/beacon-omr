@@ -162,12 +162,13 @@ class RootCollectorObserver:
 
     def on_failure(self, error, local_step=None, actions=None):
         import traceback
+        failed_phase = getattr(self, 'current_phase', {}).get('phase', 'startup')
         self.phase('failed', local_step, force=True)
         self.compute['discarded_technical_steps'] = self.compute.get('active_requests', 0) - len(self.steps)
         path = self.directory.parent / (self.collection_id + '-error.json')
         record = dict(self.current_phase, run_id=getattr(self.config.omr, 'logical_run_id', None),
             source_commit=getattr(self.config.omr, 'source_commit', None), benchmark=self.benchmark,
-            method=getattr(self.config.omr, 'method', None), policy_version=self.update,
+            method=getattr(self.config.omr, 'method', None), policy_version=self.update, failed_phase=failed_phase,
             update_started=self.update + 1, update_committed=self.update,
             error_type=type(error).__name__, error_code=getattr(error, 'code', 'native_or_training_error'),
             evidence=getattr(error, 'evidence', None), error=str(error), full_traceback=traceback.format_exc(),

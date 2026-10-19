@@ -369,6 +369,16 @@ upstream per-environment code profiles and baseline/full common fixes. A milesto
 does not stop the current rollout. Only later rollouts may restart, each with H
 new actions; replay is separately costed. No teacher, SFT, extra reward or ablations.
 
+Latest user override (2026-10-19 repair): new submissions are independent normal
+Slurm jobs, never arrays. Job names include the explicit benchmark and arm, e.g.
+omr-alfworld-full. Do not automatically submit continuations; the user will
+decide from observed training speed. Existing unrelated submitted jobs remain
+protected. For the current failed ALFWorld Full only, the repair controller may
+retire its verified pending broken-version child and submit one repaired Full,
+with no replacement child. Never run an old paired/array submitter for new work.
+The active repair checkout is beacon-omr-repair, branch codex/omr-repair-20261019;
+it is separate from the historical checkout and all frozen HPC sources.
+
 Real environment restore, two-GPU updates, monitoring and resume need evidence
 from actual execution. Unit fixtures are not evidence of completed HPC training.
 Checkpoint replacement must commit the new complete generation before removing
