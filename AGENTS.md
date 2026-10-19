@@ -145,6 +145,16 @@ Current user overrides to the execution specification:
   restart, not a confirmed fix for the unknown stall. New IDs are not returned.
   The same queue confirms WebShop smoke 166697_1/4, formal 166698_1/4, resumes
   166699_1/166700_4; preserve these along with all repaired ALFWorld jobs.
+- Old ScienceWorld baseline smoke 166370_2 (physical attempt 166696-2, c193e61)
+  now reports RayTaskError(TimeoutError): rank-zero worker registration did not
+  publish its center within 300 seconds. Zero optimizer updates/actions and no
+  complete checkpoint; deleted smoke checkpoint directory is not save success.
+  Worker-count warnings reach 314 but do not establish the timeout cause.
+  The user executed recovery d89c79828be5f46f0262f8ba11bdb55cba26ffa4. It requested
+  cancellation of 166514_2, 166517_5, 166362_2 and 166362_5, then stopped while
+  166362_2/5 were exiting. No replacement jobs were submitted. Continue with the
+  same controller/retirement ledger after cleanup; do not create another chain,
+  hot-patch frozen sources or claim the startup instrumentation fixes the cause.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

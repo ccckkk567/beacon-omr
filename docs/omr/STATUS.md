@@ -2,6 +2,27 @@
 
 ## Latest ScienceWorld evidence and startup diagnostics
 
+Old ScienceWorld baseline smoke **166370_2**, physical attempt **166696-2**,
+has now failed at c193e61. Ray started at 11:48:06; rank-zero registration waited
+from 11:59:43 for 300 seconds and raised `RayTaskError(TimeoutError)` in
+`RayWorkerGroup._init_with_resource_pool`. The named-actor snapshot contained
+only `2yW4AcWorkerDict_0:0`, without its registration-center actor. The report
+records **zero optimizer updates/actions and no checkpoint**. Checkpoint cleanup
+marked deleted does not establish a successful checkpoint save. Warnings about
+128 through 314 Python workers suggest startup pressure but do not establish
+why rank zero failed to register. The later lock-close `OSError: [Errno 77]`
+is secondary; neither an OOM nor an algorithm failure is established.
+
+The user executed recovery controller **d89c79828be5f46f0262f8ba11bdb55cba26ffa4**.
+It requested cancellation of **166514_2, 166517_5, 166362_2, 166362_5** and
+stopped because **166362_2/5** were still exiting. **No replacement jobs were
+submitted.** The controller did not request cancellation of either smoke in this
+invocation. Preserve the existing retirement ledger under
+`training-submissions/scienceworld-fdbf5569b82d9c1afd1ad2578c914adf00d0f417/`;
+rerun the same command after cleanup to continue its journaled submission.
+The new source improves startup observability; registration timeout is now a
+known failure site, but its underlying cause has not been fixed or verified.
+
 The latest returned queue confirms formal baseline **166362_2 at 1:01:51** and
 full **166362_5 at 16:44**, both still `starting` at c193e61 with **no complete
 checkpoint**. Old smoke **166370_2/5** is RUNNING at 14:43 on GDS9B74; resumes
