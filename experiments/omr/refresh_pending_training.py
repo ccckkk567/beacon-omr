@@ -33,6 +33,13 @@ JOBS = {job: (bench, 'omr-resume' if kind == 'children' else 'omr-training')
         for kind in ('children', 'parents') for bench, row in OLD.items() for job in row[kind]}
 
 
+def error_detail(error):
+    detail = getattr(error, 'stderr', None)
+    if isinstance(detail, bytes):
+        detail = detail.decode(errors='replace')
+    return str(error) + ('\n' + detail.strip() if detail and detail.strip() else '')
+
+
 def queue(invoke, user):
     result = {}
     for line in invoke(['squeue', '-h', '-r', '--states=all', '--user=' + user,
@@ -117,10 +124,35 @@ def retire(root, directory, revision, invoke=command, user=None):
                                                job, root, user, invoke)
     atomic_json(receipt, state)
     for job in pending:
+        # Materialize an individual array record before cancellation. Slurm can
+        # cancel unsplit siblings when scancel receives an unmaterialized task.
+        invoke(['scontrol', 'update', 'JobId=' + job, 'Comment=omr-pending-startup-refresh'])
+        state['verified'][job] = validate_job(invoke(['scontrol', 'show', 'job', '-o', job]),
+                                             job, root, user, invoke)
         if job not in state['cancel_intent']:
             state['cancel_intent'].append(job)
         atomic_json(receipt, state)
-        invoke(['scancel', '--user=' + user, '--state=PENDING', job])
+        try:
+            invoke(['scancel', '--user=' + user, '--state=PENDING', job])
+        except subprocess.CalledProcessError as error:
+            # A failed command is not proof that the job is still pending, nor
+            # permission to drop --state=PENDING. Reconcile with a fresh read.
+            event = {'job': job, 'error': error_detail(error)}
+            state.setdefault('cancel_errors', []).append(event)
+            atomic_json(receipt, state)
+            try:
+                after = queue(invoke, user)
+            except (ValueError, OSError, subprocess.SubprocessError) as query_error:
+                raise RuntimeError(event['error'] + '\nUnable to verify job state: '
+                                   + error_detail(query_error)) from error
+            event['state_after'] = after.get(job)
+            atomic_json(receipt, state)
+            if after.get(job) not in (None, 'CANCELLED'):
+                raise RuntimeError(event['error'] + '\nPreserving ' + job + ': '
+                                   + after[job] + '; no replacements submitted.') from error
+            print(event['error'], file=sys.stderr)
+            print('Target is already cancelled or absent: ' + job, flush=True)
+            continue
         print('Pending cancellation requested: ' + job, flush=True)
     snapshot = queue(invoke, user)
     remaining = {job: status for job, status in snapshot.items() if status != 'CANCELLED'}
@@ -132,22 +164,25 @@ def retire(root, directory, revision, invoke=command, user=None):
     return state
 
 
-def submit(root, directory, revision, invoke=command, user=None):
+def submit(root, directory, revision, invoke=command, user=None, controller_revision=None):
     retire(root, directory, revision, invoke, user)
     for bench, row in OLD.items():
-        submit_all(root, revision, revision, directory / (bench + '.json'),
+        submit_all(root, revision, controller_revision or revision, directory / (bench + '.json'),
                    invoke=invoke, benchmark=bench, include_smoke=False, run_tag=row['new_tag'])
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', required=True)
-    parser.add_argument('--revision', required=True)
+    parser.add_argument('--revision', required=True, help='Frozen training revision; keep this unchanged on retry')
+    parser.add_argument('--controller-revision', help='Frozen controller revision (defaults to --revision)')
     args = parser.parse_args()
-    if not re.fullmatch('[0-9a-f]{40}', args.revision):
-        parser.error('Use a full frozen revision')
+    controller_revision = args.controller_revision or args.revision
+    if not all(re.fullmatch('[0-9a-f]{40}', revision)
+               for revision in (args.revision, controller_revision)):
+        parser.error('Use full frozen revisions')
     root = Path(args.root).absolute()
-    clean(REPO, args.revision)
+    clean(REPO, controller_revision)
     training = root / 'code/beacon-omr-runs' / ('train-' + args.revision)
     if not training.exists():
         command(['git', '-C', root / 'code/beacon-omr', 'worktree', 'add', '--detach', training, args.revision])
@@ -162,9 +197,9 @@ def main():
     with (directory / '.submit.lock').open('a+') as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
-            submit(root, directory, args.revision)
+            submit(root, directory, args.revision, controller_revision=controller_revision)
         except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:
-            print(str(error), file=sys.stderr)
+            print(error_detail(error), file=sys.stderr)
             print('Submission records: ' + str(directory), file=sys.stderr)
             return 2
     print('Submission records: ' + str(directory))

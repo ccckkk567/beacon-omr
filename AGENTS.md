@@ -256,6 +256,21 @@ Current user overrides to the execution specification:
   Submission ledger: training-submissions/startup-166749-166853/.
   32 targeted local tests passed; no new submission or GPU acceptance receipt yet.
 
+- The user executed refresh controller 5dd260d6bf8bda538c16b28ccc4428e087d55e6d.
+  It stopped on scancel 166853_3 after writing intent for the four continuations
+  and both ALFWorld parents; no new jobs were submitted. The follow-up queue
+  confirms arrays 166853/166854/166855/166750/166751 CANCELLED at zero runtime,
+  with 166853_3 not found. ScienceWorld 166749_2/5 remain PENDING. WebShop
+  166698_1/4 remain RUNNING and 166699_1/166700_4 PENDING; preserve all four.
+  The repaired controller materializes each remaining array element before
+  pending-only cancellation and reports/reconciles nonzero cancellation errors.
+  Resume the existing retirement journal with --revision fixed to 5dd260d;
+  use --controller-revision for the newer orchestration checkout. Never reset
+  the receipt or change the training revision to bypass its binding. Skip the
+  six already withdrawn targets, replace only remaining pending targets, then
+  submit four formal tasks and four own-parent continuations. No smoke or node
+  exclusions. Sixteen local orchestration tests pass; HPC retry receipt pending.
+
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
 upstream per-environment code profiles and baseline/full common fixes. A milestone

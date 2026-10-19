@@ -24,13 +24,23 @@ class Scheduler:
         self.submits = 0
         self.race = None
         self.bad_owner = None
+        self.materialized = set()
+        self.cancel_error = None
+        self.error_state = 'PENDING'
+        self.query_error_after_cancel = False
 
     def __call__(self, argv):
         args = [str(value) for value in argv]
         self.calls.append(args)
         if args[0] == 'squeue':
+            if self.query_error_after_cancel and any(call[0] == 'scancel' for call in self.calls):
+                raise subprocess.CalledProcessError(1, args, stderr='slurmctld unreachable')
             return '\n'.join(f'{job}|{state}|{refresh.JOBS[job][1]}'
                              for job, state in self.states.items()) + '\n166698_1|RUNNING|omr-training\n166362_2|COMPLETING|omr-training'
+        if args[:2] == ['scontrol', 'update']:
+            job = args[2].removeprefix('JobId=')
+            self.materialized.add(job)
+            return ''
         if args[:3] == ['scontrol', 'show', 'job']:
             job = args[-1]
             bench, name = refresh.JOBS[job]
@@ -45,6 +55,14 @@ class Scheduler:
             return Path(args[2]).name.removeprefix('train-')
         if args[0] == 'scancel':
             job = args[-1]
+            if job not in self.materialized:
+                raise AssertionError('Array element must be materialized before cancellation')
+            if job == self.cancel_error:
+                if self.error_state is None:
+                    del self.states[job]
+                else:
+                    self.states[job] = self.error_state
+                raise subprocess.CalledProcessError(1, args, stderr=b'scancel: exact scheduler error')
             if job == self.race:
                 self.states[job] = 'RUNNING'
             if self.states[job] == 'PENDING':
@@ -141,6 +159,102 @@ class PendingRefreshTests(unittest.TestCase):
                 refresh.submit(root, root, REV, scheduler, 'linz3')
             self.assertEqual(progress.read_text(), '{"policy_update": 1}')
             self.assertEqual(scheduler.calls, [])
+
+    def test_resume_original_partial_receipt_with_new_controller_same_training(self):
+        for vanished in (False, True):
+            with self.subTest(vanished=vanished), tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
+                root = Path(tmp)
+                scheduler = Scheduler(root)
+                # Original controller validated all eight and wrote intent for
+                # six, then failed when 166853_0 also cancelled its sibling.
+                intent = list(refresh.JOBS)[:6]
+                state = {'binding': {'root': str(root), 'revision': REV, 'old': refresh.OLD,
+                                     'formal_only': True},
+                         'phase': 'withdrawing', 'cancel_intent': intent, 'verified': {}}
+                for job in refresh.JOBS:
+                    state['verified'][job] = refresh.validate_job(
+                        scheduler(['scontrol', 'show', 'job', '-o', job]), job, root, 'linz3', scheduler)
+                original_binding = state['binding'].copy()
+                refresh.atomic_json(root / 'retirement.json', state)
+                for job in intent:
+                    if vanished:
+                        del scheduler.states[job]
+                    else:
+                        scheduler.states[job] = 'CANCELLED'
+                controller = 'a' * 40
+                refresh.submit(root, root, REV, scheduler, 'linz3', controller_revision=controller)
+                refresh.submit(root, root, REV, scheduler, 'linz3', controller_revision=controller)
+                self.assertEqual([call[-1] for call in scheduler.calls if call[0] == 'scancel'],
+                                 ['166749_2', '166749_5'])
+                self.assertEqual(json.loads((root / 'retirement.json').read_text())['binding'], original_binding)
+                self.assertEqual(len(scheduler.accepted), 6)
+                for bench in refresh.OLD:
+                    saved = json.loads((root / (bench + '.json')).read_text())
+                    self.assertEqual(saved['binding']['training_revision'], REV)
+                    self.assertEqual(saved['binding']['controller_revision'], controller)
+                    self.assertIn(REV, saved['jobs']['formal']['command'])
+
+    def test_cancel_error_reconciles_cancelled_and_vanished_jobs(self):
+        for status in ('CANCELLED', None):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as errors:
+                root = Path(tmp)
+                scheduler = Scheduler(root)
+                scheduler.cancel_error = '166853_3'
+                scheduler.error_state = status
+                refresh.submit(root, root, REV, scheduler, 'linz3')
+                self.assertEqual(len(scheduler.accepted), 6)
+                self.assertIn('scancel: exact scheduler error', errors.getvalue())
+                state = json.loads((root / 'retirement.json').read_text())
+                self.assertEqual(state['phase'], 'retired')
+                self.assertEqual(state['cancel_errors'][0]['state_after'], status)
+
+    def test_cancel_error_pending_running_or_unknown_state_blocks_submissions(self):
+        for status in ('PENDING', 'RUNNING', 'COMPLETING', 'FAILED'):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
+                root = Path(tmp)
+                scheduler = Scheduler(root)
+                scheduler.cancel_error = '166853_3'
+                scheduler.error_state = status
+                with self.assertRaisesRegex(RuntimeError, 'scancel: exact scheduler error'):
+                    refresh.submit(root, root, REV, scheduler, 'linz3')
+                self.assertFalse(scheduler.accepted)
+                self.assertEqual(scheduler.states['166749_2'], 'PENDING')
+                self.assertEqual(scheduler.states['166749_5'], 'PENDING')
+                if status == 'PENDING':
+                    scheduler.cancel_error = None
+                    refresh.submit(root, root, REV, scheduler, 'linz3')
+                    self.assertEqual(len(scheduler.accepted), 6)
+                    self.assertEqual(len([c for c in scheduler.calls if c[0] == 'scancel' and c[-1] == '166854_0']), 1)
+
+    def test_failed_queue_read_keeps_original_error_and_blocks_submissions(self):
+        with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(tmp)
+            scheduler = Scheduler(root)
+            scheduler.cancel_error = next(iter(refresh.JOBS))
+            scheduler.query_error_after_cancel = True
+            with self.assertRaises(RuntimeError) as failure:
+                refresh.submit(root, root, REV, scheduler, 'linz3')
+            self.assertIn('scancel: exact scheduler error', str(failure.exception))
+            self.assertIn('slurmctld unreachable', str(failure.exception))
+            self.assertFalse(scheduler.accepted)
+
+    def test_started_evidence_after_missing_job_prevents_new_submission(self):
+        with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            root = Path(tmp)
+            scheduler = Scheduler(root)
+            scheduler.cancel_error = '166853_3'
+            scheduler.error_state = None
+
+            def invoke(args):
+                if args[0] == 'scancel' and args[-1] == scheduler.cancel_error:
+                    run = formal_run_dir(root, 'alfworld', 'full', refresh.OLD['alfworld']['run_tag'])
+                    run.mkdir(parents=True)
+                    (run / 'progress.json').write_text('{"status":"starting"}')
+                return scheduler(args)
+
+            with self.assertRaisesRegex(RuntimeError, 'has started'):
+                refresh.submit(root, root, REV, invoke, 'linz3')
+            self.assertFalse(scheduler.accepted)
 
 
 if __name__ == '__main__':

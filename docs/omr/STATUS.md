@@ -1,5 +1,36 @@
 # Execution status — 2026-10-19
 
+## Pending refresh interrupted after array cancellation
+
+The user ran controller **5dd260d6bf8bda538c16b28ccc4428e087d55e6d**.
+It requested cancellation of 166854_0, 166855_3, 166750_2, 166751_5 and
+166853_0, then stopped on a nonzero `scancel --state=PENDING 166853_3` reply.
+No replacement was submitted. Its receipt already records cancellation intent
+for those six elements and verified descriptors for all eight targets.
+
+The follow-up queue shows array records **166853, 166854, 166855, 166750 and
+166751 CANCELLED with zero runtime**; `scontrol` reports 166853_3 not found.
+Only old ScienceWorld **166749_2/5** remain pending among the eight targets.
+WebShop **166698_1/4** are still running (1:04:07 / 58:06), with their resumes
+166699_1/166700_4 pending. Old 166362_2 remains COMPLETING and is not a target.
+
+This is consistent with [Slurm's documented unsplit-array cancellation
+behavior](https://slurm.schedmd.com/scancel.html). The controller now updates an
+individual element's comment to materialize its job record, revalidates it, then
+uses the pending-only cancellation filter. Nonzero cancellation replies retain
+stderr and trigger a fresh queue read: only a cancelled/absent intended target
+can be reconciled; running, pending, unknown states or failed queries stop
+submission. Old training-attempt evidence still blocks replacement.
+
+An optional `--controller-revision` allows this controller repair to continue the
+existing retirement receipt while `--revision` remains the original **5dd260d**
+training revision. Baseline/full, output tags, resources and continuation paths
+remain bound to that training revision. All old files and accepted submission
+records are retained. **16 targeted local tests passed**, including the returned
+partial-cancellation state, benign and unsafe races, scheduler-error reporting,
+quota retries and matching formal/resume bindings. These use a simulated Slurm;
+new submission IDs and GPU execution evidence are still pending.
+
 ## Latest decision: continue with formal jobs only
 
 The user requested cancellation of all project `omr-smoke` jobs and no further
