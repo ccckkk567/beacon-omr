@@ -18,7 +18,15 @@ while all new training is fixed at d9e9d2f, matching ALF Full 167422. No new
 continuations, model/profile changes or extra experiments. New tag
 pool-fix-20261019; journal analysis/beacon-omr/repairs/queued-pool-fix-20261019.
 Nine local orchestration tests pass, including start races and quota retries.
-No replacement IDs or new GPU acceptance receipts have yet been returned.
+The user confirmed successful execution using controller
+`f0e883612326e767828d815b7d49f4a8d418d6b1`: all six exact old targets were
+withdrawn; WebShop Full **167425**, ScienceWorld baseline **167426** and
+ScienceWorld Full **167427** were submitted. All use training d9e9d2f, as does
+ALFWorld Full 167422. No new continuations. Logs are
+`logs/beacon-omr/webshop-full-167425.out`,
+`logs/beacon-omr/scienceworld-baseline-167426.out`, and
+`logs/beacon-omr/scienceworld-full-167427.out` under the agreed root.
+These are submission receipts, not new native/GPU acceptance results.
 The initial only-ALF deployment scope below is superseded for these exact queued
 conditions; running baselines and all other jobs remain protected.
 

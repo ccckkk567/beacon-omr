@@ -400,7 +400,15 @@ Preserve running baselines 167234_0 and 167237_1, their existing continuations
 167235_0/167238_1, ALF Full 167422, all old files and unrelated jobs. A started,
 missing/unexplained or mismatched target aborts rather than being cancelled.
 New tag pool-fix-20261019; journal repairs/queued-pool-fix-20261019/ under
-analysis/beacon-omr. Nine local orchestration tests passed; deployment pending.
+analysis/beacon-omr. Nine local orchestration tests passed.
+The user now confirmed successful execution at controller
+f0e883612326e767828d815b7d49f4a8d418d6b1: the six exact pending old elements
+were withdrawn, and WebShop Full 167425, ScienceWorld baseline 167426 and Full
+167427 were submitted as standalone jobs without new continuations. All three
+train at d9e9d2f, matching ALFWorld Full 167422. Do not repeat the refresh or
+migrate training to newer documentation commits. Protected running baseline
+sources remain 98d7a69; common execution profile remains legacy/sync. No GPU,
+optimizer or checkpoint acceptance for these replacements is yet available.
 
 Real environment restore, two-GPU updates, monitoring and resume need evidence
 from actual execution. Unit fixtures are not evidence of completed HPC training.

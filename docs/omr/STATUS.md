@@ -9,7 +9,19 @@ must use training d9e9d2f, matching ALFWorld Full 167422, as independent named
 jobs with no new resumes. Running ALF/Web baselines and 167422 stay protected.
 The targeted controller validates fresh states and original receipts, then
 materializes and cancels only the six authorized pending elements, children
-first. Replacement IDs are pending user execution. See refresh_queued_repairs.py.
+first. The user confirmed successful replacement using controller
+`f0e883612326e767828d815b7d49f4a8d418d6b1`: WebShop Full **167425**,
+ScienceWorld baseline **167426**, ScienceWorld Full **167427**. All three train
+at `d9e9d2f3dc27c7c8617a00ab9ed92e370139cc8a`, independently, with no new
+continuations. The six listed old elements were reported withdrawn. New tag:
+`pool-fix-20261019`; journal `repairs/queued-pool-fix-20261019/jobs.json` under
+`analysis/beacon-omr`. No execution/optimizer/checkpoint results returned yet.
+
+| Benchmark | Baseline | Full |
+| --- | --- | --- |
+| ALFWorld | 167234_0, protected old source 98d7a69 | 167422, repaired source d9e9d2f |
+| WebShop | 167237_1, protected old source 98d7a69 | 167425, repaired source d9e9d2f |
+| ScienceWorld | 167426, repaired source d9e9d2f | 167427, repaired source d9e9d2f |
 
 
 The user confirmed successful submission of **167422**, named
@@ -24,8 +36,8 @@ latest checkpoint existed. No new running, optimizer, checkpoint or native
 acceptance evidence for 167422 has been returned yet. Preserve other jobs.
 
 See [repair execution report](REPAIR_EXECUTION_20261019.md). Local CPU fixtures
-pass; native ALFWorld/GPU acceptance is pending. Repair only failed ALFWorld Full
-after exact source/run/state checks. Current baseline and other jobs are KEEP.
+pass; native ALFWorld/GPU acceptance is pending. The authorized repair rollout
+above is submitted; running baselines and unrelated jobs remain protected.
 New submissions are independent named normal jobs, no arrays, no automatic
 continuations. Preserve per-turn sync/sleep/wake and default legacy/sync profile.
 
