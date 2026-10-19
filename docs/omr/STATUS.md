@@ -6,7 +6,20 @@ See [full-batch release report](FULL_BATCH_ROLLBACK_20261019.md). User-returned
 accounting confirms 167422,167425,167426,167427 CANCELLED. Their submission
 profiles were already legacy/sync. The newly authorized resubmission uses clean
 branch codex/omr-restore-fullbatch-20261019, explicit full batches, independent
-named jobs and no new resumes. Actual new IDs/GPU acceptance are pending.
+named jobs and no new resumes. The user returned successful submissions with
+controller `7894a63cb4a21852035988b6206591170183224b` and training frozen at
+`ddae412e6195d2f86dace7f5ce2630d155ac0c01`:
+
+| Condition | Job ID | Job name |
+| --- | --- | --- |
+| ALFWorld Full | 167697 | omr-alfworld-full |
+| WebShop Full | 167698 | omr-webshop-full |
+| ScienceWorld baseline | 167699 | omr-scienceworld-baseline |
+| ScienceWorld Full | 167700 | omr-scienceworld-full |
+
+No new continuations. These are submission receipts only; fresh queue states,
+GPU/optimizer/checkpoint acceptance and partial-done generation evidence are
+pending. Do not resubmit or migrate these jobs to a documentation-only commit.
 Keep running old baselines 167234_0/167237_1 and their existing children.
 The sections below describe historical submissions, not instructions to repeat
 old recovery controllers or to preserve the four now-cancelled targets.

@@ -435,3 +435,12 @@ not moving/copying old files. Keep training frozen to ddae412 and select the
 new controller with --controller-revision; same fullbatch-20261019 tags and
 retry journals, four standalone jobs and no new continuations. The failure was
 reproduced locally; 17 related submission tests pass. No new HPC IDs yet.
+
+The user returned successful retry receipts: ALFWorld Full 167697, WebShop Full
+167698, ScienceWorld baseline 167699 and Full 167700. All four standalone jobs
+use training ddae412e6195d2f86dace7f5ce2630d155ac0c01, controller
+7894a63cb4a21852035988b6206591170183224b, tag fullbatch-20261019,
+2 H200 / 32 CPU / 256 GiB / 18h and no new continuations. Submission records:
+analysis/beacon-omr/training-submissions/fullbatch-20261019. Preserve these
+accepted jobs and both old baselines/children; do not resubmit or migrate to a
+documentation commit. Queue/GPU/update/checkpoint execution evidence is pending.

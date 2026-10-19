@@ -67,8 +67,13 @@ Accepted new IDs are in the four adjacent `benchmark-method.json` journals;
 rerunning the same frozen command retains accepted jobs after quota rejection.
 Each new run uses tag `fullbatch-20261019`, 2 H200 / 32 CPU / 256 GiB / 18h,
 an explicit `omr-{benchmark}-{method}` name and its own SwanLab run. Credentials
-remain runtime-only. New IDs and GPU execution receipts are pending the user's
-Tunnel execution; no submission is claimed here.
+remain runtime-only. The user returned successful Tunnel submission receipts:
+ALFWorld Full **167697**, WebShop Full **167698**, ScienceWorld baseline
+**167699**, ScienceWorld Full **167700**. Controller:
+`7894a63cb4a21852035988b6206591170183224b`; training remains frozen to
+`ddae412e6195d2f86dace7f5ce2630d155ac0c01`. No new continuations. Do not
+repeat submission or move training to a later documentation commit. Current
+queue states and GPU/optimizer/checkpoint execution receipts are not yet known.
 
 Actual HPC `launch.json`, `resolved-config.json`, completed update/latest and
 partial-done generation records have not yet been returned for these four jobs.
