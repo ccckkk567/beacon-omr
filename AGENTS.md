@@ -271,6 +271,34 @@ Current user overrides to the execution specification:
   submit four formal tasks and four own-parent continuations. No smoke or node
   exclusions. Sixteen local orchestration tests pass; HPC retry receipt pending.
 
+- The user returned successful refresh output at controller 175a616: ALFWorld
+  formal 167125_0/3 with resumes 167126_0/167127_3; ScienceWorld formal
+  167128_2/5 with resumes 167129_2/167130_5. All use training 5dd260d.
+- Both WebShop formal jobs 166698_1/4 at d6dff44 have now failed before their
+  first optimizer update. Baseline completed initial evaluation and its first
+  15-action rollout, then compute_response_mask rejected object-dtype boolean
+  metadata from real collate_fn. Full completed initial evaluation, then the
+  shallow copy of its vector in _group_render ran __del__/close and killed the
+  shared live actors. This is not an OOM/time-limit diagnosis. Both bugs were
+  reproduced locally using production collation and vector destructors.
+  Normalize padding to a shape-checked boolean array before Torch conversion;
+  preview only manager rendering state, never copy an actor-owning vector.
+  ALFWorld preview must not mutate its original admissible-command cache.
+- Latest queue: the eight new ALFWorld/ScienceWorld formal/resume elements above
+  and old WebShop resumes 166699_1/166700_4 are all PENDING. WebShop parents
+  166698_1/4 are absent. Ancient 166362_2 remains COMPLETING; never target it.
+  recover_first_update.py validates and withdraws only these ten pending IDs,
+  children first. If any target starts or changes identity, stop and inspect.
+  Preserve all old artifacts and reject any prior optimizer/checkpoint evidence.
+  Use isolated tags update-fix-167125, update-fix-166698, update-fix-167128 for
+  ALFWorld, WebShop and ScienceWorld, respectively. Submit six formal tasks
+  concurrently plus six own-parent resumes at one frozen repaired revision;
+  all remain 18h / 2 H200 / 32 CPU / 256 GiB. No smoke or node exclusions.
+  New SwanLab runs use these tags; continuations follow normal checkpoint/run
+  lineage. The journal first-update-167125-166698-167128 retains accepted IDs
+  across quota retries. 58 targeted local tests pass, with Ray/native engines
+  and Slurm transport substituted. No repaired GPU update is claimed yet.
+
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
 upstream per-environment code profiles and baseline/full common fixes. A milestone

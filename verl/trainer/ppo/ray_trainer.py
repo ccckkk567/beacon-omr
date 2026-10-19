@@ -242,6 +242,10 @@ def compute_response_mask(data: DataProto):
     mask = attention_mask[:, -response_length:].clone()
     padding = data.non_tensor_batch.get('is_padding_copy')
     if padding is not None:
+        # collate_fn stores non-tensor metadata as object arrays, including bools.
+        padding = np.asarray(padding, dtype=np.bool_)
+        if padding.shape != (mask.shape[0],):
+            raise ValueError('is_padding_copy must contain one boolean per batch row')
         mask[torch.as_tensor(padding, dtype=torch.bool, device=mask.device)] = 0
     return mask
 

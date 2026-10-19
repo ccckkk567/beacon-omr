@@ -176,7 +176,7 @@ def workers_of(manager):
     return vector.workers if hasattr(vector, 'workers') else vector._workers
 
 
-def render_starts(manager, benchmark, packets):
+def render_starts(manager, benchmark, packets, *, update_vector_state=True):
     """Rebuild the ordinary manager renderer with verified native start state."""
     from .identity import alfworld_trial_id
     raw = [packet['observation'] for packet in packets]
@@ -187,10 +187,12 @@ def render_starts(manager, benchmark, packets):
         manager.tasks = []
         manager.extract_task([packet['root_observation'] for packet in packets])
         manager.gamefile = [packet['root_info']['extra.gamefile'] for packet in packets]
-        manager.envs.prev_admissible_commands = [info['admissible_commands'] for info in infos]
+        admissible_commands = [info['admissible_commands'] for info in infos]
+        if update_vector_state:
+            manager.envs.prev_admissible_commands = admissible_commands
         for info, game in zip(infos, manager.gamefile):
             info.update(trial_id=alfworld_trial_id(game), **{'extra.gamefile': game})
-        formatted, arguments = raw, manager.envs.get_admissible_commands
+        formatted, arguments = raw, admissible_commands
     elif benchmark == 'scienceworld':
         manager.tasks = [packet['root_info']['task_description'] for packet in packets]
         for info, task in zip(infos, manager.tasks):

@@ -58,9 +58,10 @@ class FullCollectorObserver(RootCollectorObserver):
 
     def _group_render(self, packets):
         local = copy(self.manager)
-        local.envs = copy(self.manager.envs)
+        # The vector owns live actors and closes them in __del__. Never copy
+        # that owner for a rendering preview; isolate only renderer state.
         local.memory = type(self.manager.memory)()
-        observations, _ = render_starts(local, self.benchmark, packets)
+        observations, _ = render_starts(local, self.benchmark, packets, update_vector_state=False)
         if len(set(observations['text'])) != 1:
             raise ValueError('Group members did not restore the same concrete input history')
 

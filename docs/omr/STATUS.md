@@ -1,5 +1,52 @@
 # Execution status — 2026-10-19
 
+## Current: first-update failures repaired; formal replacement prepared
+
+The previously interrupted pending refresh succeeded with controller **175a616**:
+ALFWorld formal **167125_0/3**, resumes **167126_0/167127_3**; ScienceWorld formal
+**167128_2/5**, resumes **167129_2/167130_5**. Their training source is **5dd260d**.
+The latest user queue shows all eight pending, plus pending old WebShop resumes
+**166699_1/166700_4**. Ancient **166362_2** remains COMPLETING and is not a target.
+
+Both WebShop formal jobs **166698_1/4**, training source **d6dff44**, failed with
+zero completed optimizer updates:
+
+| Arm | Completed before failure | Direct cause |
+| --- | --- | --- |
+| Baseline | Initial evaluation and first 15-action training rollout | `collate_fn` stored boolean padding metadata in an object array; direct Torch conversion failed in `compute_response_mask` |
+| Full | Initial evaluation | `_group_render` shallow-copied a vector owning live actors; the temporary copy's destructor closed/killed the shared actors before event-context collection |
+
+The first cause applies to both arms on all three benchmarks. The second was
+reproduced with both production WebShop and ScienceWorld vector destructors.
+Neither traceback establishes GPU/RAM exhaustion or a wall-time limit.
+
+The mask now normalizes padding metadata to a boolean vector and checks its row
+count before conversion. Rendering previews isolate manager memory and metadata
+without copying the actor owner. ALFWorld preview renders local admissible commands
+without overwriting its live vector cache. Root/history agreement checks and the
+real owner's normal cleanup remain intact. Experiment profiles and batch sizes
+are unchanged; the common source also includes the earlier startup import fixes.
+
+**58 targeted local tests passed**: 40 training/masking/restart/advantage fixtures
+and 18 submission/recovery fixtures. The new tests first reproduced the original
+object-array exception and premature actor destruction. They use real DataProto,
+collation, padding, mask, manager rendering and vector destructor methods, with
+Ray transport/native engines substituted. Local CPU tests use Torch 2.10 and
+TensorDict 0.6.1, not the HPC Torch 2.6 runtime; GPU acceptance is still required.
+
+`recover_first_update.py` checks the ten pending IDs above, withdraws continuations
+before parents, and submits three independent two-element formal arrays plus six
+own-parent continuations. New outputs/SwanLab identities use `update-fix-167125`
+(ALFWorld), `update-fix-166698` (WebShop), and `update-fix-167128` (ScienceWorld).
+All use one repaired frozen revision, 18 hours, two H200, 32 CPUs and 256 GiB.
+There is no smoke submission, node exclusion or wait for ancient cleanup.
+Previous run files remain intact. A target that starts, changes identity, or has
+optimizer/checkpoint evidence stops replacement. Quota retries reuse accepted IDs
+in `training-submissions/first-update-167125-166698-167128/`.
+New submission output and a successful GPU optimizer update have not been returned.
+
+The sections below are chronological records of earlier states and decisions.
+
 ## Pending refresh interrupted after array cancellation
 
 The user ran controller **5dd260d6bf8bda538c16b28ccc4428e087d55e6d**.
