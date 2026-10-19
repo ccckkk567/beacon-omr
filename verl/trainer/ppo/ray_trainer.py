@@ -1209,6 +1209,8 @@ class RayPPOTrainer:
                             reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
                     # recompute old_log_probs
+                    if hasattr(self, '_protocol_phase'):
+                        self._protocol_phase('old_log_prob')
                     with _timer("old_log_prob", timing_raw):
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
                         entropys = old_log_prob.batch["entropys"]
@@ -1246,6 +1248,8 @@ class RayPPOTrainer:
 
                     if self.use_reference_policy:
                         # compute reference log_prob
+                        if hasattr(self, '_protocol_phase'):
+                            self._protocol_phase('ref_log_prob')
                         with _timer("ref", timing_raw):
                             if not self.ref_in_actor:
                                 ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
@@ -1259,6 +1263,8 @@ class RayPPOTrainer:
                             values = self.critic_wg.compute_values(batch)
                             batch = batch.union(values)
 
+                    if hasattr(self, '_protocol_phase'):
+                        self._protocol_phase('advantage')
                     with _timer("adv", timing_raw):
                         # we combine with rule-based rm
                         reward_extra_infos_dict: dict[str, list]
@@ -1319,6 +1325,8 @@ class RayPPOTrainer:
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
+                        if hasattr(self, '_protocol_phase'):
+                            self._protocol_phase('actor_update')
                         with _timer("update_actor", timing_raw):
                             batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
                             if self.config.get('omr', {}).get('protocol', False):

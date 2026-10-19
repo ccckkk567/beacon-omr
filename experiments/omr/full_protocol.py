@@ -77,6 +77,8 @@ class FullCollectorObserver(RootCollectorObserver):
 
     def initialize(self):
         import ray
+        self.phase('restore', force=True)
+        started_restore = time.monotonic()
         workers = workers_of(self.manager)
         payloads = {key: self.store.get(self.controller.archive.entries[key].restore_payload_ref)['payload']
                     for key in set(self.actual_ids) if key is not None}
@@ -120,6 +122,7 @@ class FullCollectorObserver(RootCollectorObserver):
                 self.config.algorithm.migpo.threshold)
             self.traces.append(trace)
         self.start_infos = deepcopy(infos)
+        self.add_timing('restore_wall_s', time.monotonic() - started_restore)
         dump_records(self.directory / (self.collection_id + '-starts.jsonl.gz'), self.restore_rows)
         self.flush()
         return observations, infos
@@ -199,6 +202,7 @@ class FullCollectorObserver(RootCollectorObserver):
             self.pending_entries[key] = entry
             candidate.update(checkpoint_id=key, payload_ref=ref)
         self.compute['capture_seconds'] += time.monotonic() - started
+        self.add_timing('capture_wall_s_inclusive', time.monotonic() - started)
 
     def finish(self):
         result = super().finish()
@@ -217,6 +221,10 @@ class FullCollectorObserver(RootCollectorObserver):
         for candidate in self.candidate_buffer.selected():
             self.controller.capture(self.pending_entries[candidate['checkpoint_id']])
         transaction = self.controller.commit(update)
+        admissions = {row['checkpoint_id']: row for row in transaction['admissions']}
+        for candidate in self.candidates:
+            if candidate.get('checkpoint_id') in admissions:
+                candidate['admission'] = admissions[candidate['checkpoint_id']]
         for task_id, values in self.new_thresholds.items():
             self.thresholds[task_id] = sorted(set(self.thresholds.get(task_id, [])) | values)
         if self.benchmark == 'scienceworld':
@@ -238,7 +246,7 @@ class FullCollectorObserver(RootCollectorObserver):
         roots = self.active_refs()
         self.store.garbage_collect(roots, self.latest_payload_refs)
         entries = list(self.controller.archive.active().values())
-        return {'archive/entries': len(entries), 'archive/untried': sum(e.untried for e in entries),
+        metrics = {'archive/entries': len(entries), 'archive/untried': sum(e.untried for e in entries),
                 'archive/task_coverage': len({e.task.key for e in entries}),
                 'archive/candidates': len(self.candidates),
                 'archive/candidates_observed': len(self.candidates),
@@ -255,7 +263,36 @@ class FullCollectorObserver(RootCollectorObserver):
                 'sampler/requested_restart_groups': sum(plan.checkpoint_id is not None for plan in self.plans),
                 'sampler/actual_restart_groups': sum(key is not None for key in self.actual_ids) / self.group_n,
                 'sampler/restore_failed_groups': self.compute['restore_failed_groups'],
-                'sampler/discovery_rate': sum(transaction['discovery'].values()) / len(transaction['discovery'])}
+                'sampler/discovery_rate': sum(transaction['discovery'].values()) / max(1, len(transaction['discovery']))}
+        import numpy as np
+        history = list(self.controller.archive.entries.values()) + list(self.controller.archive.retired.values())
+        cohorts = []
+        for cohort in sorted({e.created_update for e in history}):
+            members = [e for e in history if e.created_update == cohort]
+            tried = [e for e in members if not e.untried]
+            cohorts.append({'admission_update': cohort, 'admitted': len(members), 'served': len(tried),
+                            'first_trial_rate': len(tried) / len(members),
+                            'pending_or_censored': len(members) - len(tried), 'as_of_update': update})
+        dump_records(self.directory / (self.collection_id + '-first-trial-cohorts.jsonl.gz'), cohorts)
+        categories = Counter((e.task.key, e.coverage_key) for e in entries)
+        metrics.update({'archive/category_coverage': len(categories),
+                        'archive/retired': len(self.controller.archive.retired),
+                        'archive/quarantined': sum(e.validity_status == 'restore_failed' for e in history),
+                        'first_trial/served_rate': sum(not e.untried for e in history) / max(1, len(history))})
+        waits = [e.first_trial_update - e.created_update for e in history if not e.untried]
+        for name, values in [('first_trial/wait_updates', waits),
+                             ('sampler/L', [p.L_before for p in self.plans]),
+                             ('sampler/D', [p.D_before for p in self.plans])]:
+            if values:
+                metrics.update({name + '/p50': float(np.percentile(values, 50)),
+                                name + '/p95': float(np.percentile(values, 95)),
+                                name + '/max': float(max(values))})
+        for channel in ('priority', 'stale', 'coverage'):
+            metrics['sampler/' + channel + '_groups'] = sum(p.channel == channel for p in self.plans)
+        dump_records(self.directory / (self.collection_id + '-admissions-by-category.jsonl.gz'),
+                     [{'task': entry.task.key, 'category': entry.coverage_key, **admissions[key]}
+                      for key, entry in self.pending_entries.items() if key in admissions])
+        return metrics
 
     def active_refs(self):
         return {ref for entry in self.controller.archive.active().values()

@@ -367,7 +367,10 @@ class TrajectoryCollector:
                 next_obs, rewards, dones, infos = envs.step(text_actions)
             except Exception as error:
                 if observer is not None:
-                    observer.on_failure(error, _step, text_actions)
+                    try:
+                        observer.on_failure(error, _step, text_actions)
+                    except Exception as report_error:
+                        error.add_note('Failure audit also failed: ' + repr(report_error))
                 raise
             if observer is not None:
                 observer.add_timing('env_wait_wall_s', time.monotonic() - started_env)
@@ -411,9 +414,18 @@ class TrajectoryCollector:
             batch.non_tensor_batch['rewards'] = torch_to_numpy(rewards, is_object=True)
             batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
             if observer is not None:
+                observer.phase('observer', _step)
+                started_observer = time.monotonic()
                 try:
                     observer.record(batch, obs, next_obs, infos, rewards, dones, active_masks, _step)
-                finally:
+                except Exception as error:
+                    try:
+                        observer.on_failure(error, _step, text_actions)
+                    except Exception as report_error:
+                        error.add_note('Failure audit also failed: ' + repr(report_error))
+                    raise
+                else:
+                    observer.add_timing('observer_wall_s', time.monotonic() - started_observer)
                     observer.flush()
             
             # Update episode lengths for active environments

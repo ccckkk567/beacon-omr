@@ -86,6 +86,11 @@ class ProtocolTrainer(RayPPOTrainer):
                  for _ in range(self.config.env.rollout.n)]
         self.train_observer.plan(tasks, update=self.global_steps - 1, split='train')
 
+    def _protocol_phase(self, phase):
+        atomic_json(self.attempt / 'phase.json', {'schema': 1, 'phase': phase,
+            'wallclock': time.time(), 'monotonic': time.monotonic(), 'attempt': str(self.attempt),
+            'update': self.global_steps, 'local_step': None})
+
     def _after_training_update(self, batch, metrics):
         rows = []
         for i in range(len(batch)):
@@ -117,7 +122,16 @@ class ProtocolTrainer(RayPPOTrainer):
         self.cost['response_tokens'] += sum(row['response_tokens'] for row in steps)
         self.cost['train_rollout_seconds'] += self.train_observer.seconds
         for key, value in self.train_observer.compute.items():
-            self.cost[key] += value
+            self.cost[key] = self.cost.get(key, 0) + value
+        from .root_protocol import split_cost
+        metrics.update(split_cost(self.run_dir))
+        metrics.update(self.train_observer.performance_metrics())
+        metrics.update({'health/policy_updates_committed': self.global_steps,
+                        'health/first_update_completed': int(self.global_steps >= 1),
+                        'health/fatal_count': 0, 'health/identity_missing_count': 0,
+                        'health/identity_mismatch_count': 0, 'health/identity_bound_fallback_count': 0,
+                        'rollout/used_training_steps': len(rows),
+                        'rollout/generated_action_steps': len(steps)})
         metrics.update({'cost/cumulative_' + key: value for key, value in self.cost.items()})
         for mode in ('root', 'restart'):
             episodes = [row for row in self.train_observer.summary if row.get('start_mode', 'root') == mode]
@@ -158,6 +172,7 @@ class ProtocolTrainer(RayPPOTrainer):
         return metrics
 
     def _evaluate_manifest(self, split, seeds):
+        self._protocol_phase('root_validation' if split == 'validation' else 'final_test')
         from verl.utils.dataset.rl_dataset import collate_fn
         rows = []
         pool = self.manifest['splits'][split]
@@ -177,16 +192,25 @@ class ProtocolTrainer(RayPPOTrainer):
                 self.traj_collector.multi_turn_loop(batch, self.actor_rollout_wg, self.val_envs, is_train=False)
                 rows.extend(self.eval_observer.summary)
                 for key, value in self.eval_observer.compute.items():
-                    self.cost[key] += value
+                    self.cost[key] = self.cost.get(key, 0) + value
         self.cost['eval_attempts'] += len(rows)
         prefix = 'eval/val' if split == 'validation' else 'eval/test'
         metrics = summarize(rows, prefix)
+        from .root_protocol import split_cost
+        metrics.update(split_cost(self.run_dir))
         dump_records(self.attempt / 'evaluation' / f'{split}-u{self.global_steps:06d}.jsonl.gz', rows)
         return metrics
 
     def _save_checkpoint(self):
         if self.last_saved == self.global_steps:
             return
+        started_save = time.monotonic()
+        self._protocol_phase('checkpoint_save')
+        log_state = {}
+        for name in ('train_observer', 'eval_observer'):
+            observer = getattr(self, name, None)
+            if observer is not None and hasattr(observer, 'flushed_steps'):
+                log_state[name] = observer.durable_state()
         swan = self.logger.logger.get('swanlab')
         state = {'schema': 1, 'signature': self.signature, 'epoch': self.current_epoch,
                  'update': self.global_steps, 'archive_enabled': False, 'task_cursor': self.global_steps,
@@ -203,6 +227,7 @@ class ProtocolTrainer(RayPPOTrainer):
                 raise ValueError('OMR state and model update are not aligned')
         state['ledger_watermark'] = {str(path.relative_to(self.run_dir)): file_sha256(path)
                                     for path in sorted((self.run_dir / 'cost-ledger').glob('*/*.json'))}
+        state['log_watermarks'] = log_state
 
         def write(directory):
             self.actor_rollout_wg.save_checkpoint(str(directory / 'actor'), None,
@@ -224,6 +249,9 @@ class ProtocolTrainer(RayPPOTrainer):
             {'signature': self.signature, 'source_commit': self.config.omr.source_commit,
              'manifest_sha256': self.manifest['sha256']}, required_free_bytes=24 * 1024 ** 3)
         self.last_saved = self.global_steps
+        self.checkpoint_save_wall_s = time.monotonic() - started_save
+        atomic_json(self.attempt / f'checkpoint-{self.global_steps:06d}-timing.json',
+                    {'perf/checkpoint/save_wall_s': self.checkpoint_save_wall_s})
         if state['archive_enabled']:
             observer.checkpoint_committed()
 
@@ -248,6 +276,13 @@ class ProtocolTrainer(RayPPOTrainer):
             path = self.run_dir / name
             if not path.resolve().is_relative_to(self.run_dir.resolve()) or file_sha256(path) != expected:
                 raise ValueError('Scientific cost ledger lost or modified since checkpoint')
+        for watermark in state.get('log_watermarks', {}).values():
+            if watermark['enqueued'] != watermark['durable']:
+                raise ValueError('Checkpoint references nondurable scientific records')
+            for chunk in watermark['chunks']:
+                path = Path(chunk['path'])
+                if not path.resolve().is_relative_to(self.run_dir.resolve()) or file_sha256(path) != chunk['sha256']:
+                    raise ValueError('Immutable scientific chunk changed since checkpoint')
         self.actor_rollout_wg.load_checkpoint(str(directory / 'actor'), del_local_after_load=False)
         self.train_dataloader.load_state_dict(torch.load(directory / 'data.pt', weights_only=False))
         self.global_steps = self.last_saved = state['update']
@@ -282,6 +317,22 @@ class ProtocolTrainer(RayPPOTrainer):
         except TrainingStop:
             if self.global_steps > 0:
                 self._save_checkpoint()
+        except Exception as error:
+            observers = [o for o in (self.train_observer, self.eval_observer) if hasattr(o, 'collection_id')]
+            if observers:
+                observer = max(observers, key=lambda o: o.started)
+                try:
+                    observer.on_failure(error)
+                    if hasattr(self, 'logger'):
+                        from .root_protocol import split_cost
+                        self.logger.log(data=dict(split_cost(self.run_dir), **{'health/fatal_count': 1,
+                            'health/identity_missing_count': int('identity_unavailable' in str(error)),
+                            'health/identity_mismatch_count': int('identity_mismatch' in str(error))}), step=self.global_steps)
+                except Exception as report_error:
+                    error.add_note('Failure audit also failed: ' + repr(report_error))
+            atomic_json(self.attempt / 'health-failed.json', {'health/fatal_count': 1,
+                        'error': str(error), 'source_commit': self.config.omr.source_commit})
+            raise
         status = 'completed' if self.final_test_done else 'checkpointed_stop'
         atomic_json(self.run_dir / 'progress.json', {'status': status,
             'policy_update': self.last_saved, 'attempt': str(self.attempt), 'cost': self.cost})

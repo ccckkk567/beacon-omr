@@ -20,6 +20,10 @@ def native_identity_check(task):
         'textworld_version': importlib.metadata.version('textworld'),
         'textworld_module': textworld.__file__, 'wrapper_source': inspect.getfile(AlfredInfos),
         'worker_source': inspect.getfile(AlfworldWorker), 'requested_task': task, 'checks': []}
+    expected_root = Path(__file__).resolve().parents[2]
+    for key in ('wrapper_source', 'worker_source'):
+        if not Path(result[key]).resolve().is_relative_to(expected_root):
+            raise RuntimeError('Native acceptance imported a different checkout: ' + result[key])
     try:
         source = AlfworldWorker(config, task['root_seed'], deepcopy(specification))
         workers.append(source)

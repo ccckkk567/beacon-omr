@@ -25,7 +25,7 @@ def compose_config(payload):
     writer = payload.get('writer_profile_id', 'sync-v1')
     if execution not in ('perturn-legacy-v1', 'perturn-active-v1') or writer not in ('sync-v1', 'bounded-v1'):
         raise ValueError('Unknown execution/writer profile')
-    config.omr.update(execution_profile_id=execution, writer_profile_id=writer)
+    config.omr.update({'execution_profile_id': execution, 'writer_profile_id': writer})
     protocol_signature = digest([OmegaConf.to_container(config, resolve=True), payload['model'],
                                  payload['source_commit'], 'omr-protocol-v2'])
     config.actor_rollout_ref.model.path = payload['model']['path']
@@ -50,6 +50,9 @@ def compose_config(payload):
             'analysis/beacon-omr/manifests' / (payload['benchmark'] + '.json')))})
     config.omr.tracking = {'resume': 'never', 'mode': 'online',
                            'logdir': str(Path(payload['attempt_dir']) / 'swanlab')}
+    for key in ('parent_failed_run', 'parent_attempt'):
+        if key in payload:
+            config.omr[key] = payload[key]
     OmegaConf.resolve(config)
     return config
 

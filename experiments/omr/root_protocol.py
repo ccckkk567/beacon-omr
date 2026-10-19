@@ -104,6 +104,10 @@ class RootCollectorObserver:
         self.started = time.monotonic()
         self.collection_id = f'{split}-u{update:06d}-s{generation_seed}-b{self.counter:05d}'
         self.counter += 1
+        self.writer = None
+        if getattr(self.config.omr, 'writer_profile_id', 'sync-v1') == 'bounded-v1':
+            from .bounded_writer import BoundedWriter
+            self.writer = BoundedWriter(self.directory, self.collection_id)
 
     def phase(self, name, local_step=None, force=False):
         now = time.monotonic()
@@ -170,9 +174,15 @@ class RootCollectorObserver:
             requested_tasks=self.tasks, actions=actions,
             actual_start_ids=getattr(self, 'actual_ids', [None] * len(self.tasks)),
             costs_are_lower_bounds=True, performance=self.performance, **self.compute)
+        record.update({'health/fatal_count': 1,
+            'health/identity_missing_count': int('identity_unavailable' in str(error)),
+            'health/identity_mismatch_count': int('identity_mismatch' in str(error)),
+            'health/identity_bound_fallback_count': 0})
         atomic_json(path, record)
         try:
             self.flush()
+            if getattr(self, 'writer', None) is not None:
+                self.writer.close()
         except Exception as flush_error:
             # Preserve the primary training/identity exception.
             atomic_json(path.with_name(path.stem + '-flush-error.json'), {'error': repr(flush_error)})
@@ -213,12 +223,18 @@ class RootCollectorObserver:
     def record(self, batch, observations, next_observations, infos, rewards, dones, active, local_step):
         import numpy as np
         generated = np.asarray(batch.non_tensor_batch.get('has_generated_response', np.ones(len(self.tasks))), dtype=bool)
+        if np.any(np.asarray(active[:self.real_count], dtype=bool) & ~generated[:self.real_count]):
+            raise ValueError('Active real slot has no generated response')
         checked = generated & np.asarray(active, dtype=bool)
         if checked.any() and getattr(self.config.omr, 'protocol', False) and 'omr_synced_policy_version' not in batch.non_tensor_batch:
             raise ValueError('Missing native rollout weight synchronization receipt')
         if 'omr_synced_policy_version' in batch.non_tensor_batch:
             if not np.all(batch.non_tensor_batch['omr_synced_policy_version'][checked] == self.update):
                 raise ValueError('Collected responses came from a different policy version')
+        if checked.any() and getattr(self.config.omr, 'protocol', False):
+            sequence = batch.non_tensor_batch.get('omr_weight_sync_sequence')
+            if sequence is None or not np.all(sequence[checked] > 0):
+                raise ValueError('Missing real per-turn weight synchronization sequence')
         batch.non_tensor_batch['task_id'] = np.array([t['id'] for t in self.tasks], dtype=object)
         batch.non_tensor_batch['start_mode'] = np.array(['root'] * len(self.tasks), dtype=object)
         width = batch.batch['responses'].shape[1]
@@ -264,11 +280,22 @@ class RootCollectorObserver:
             path = self.directory / (self.collection_id + '-steps.jsonl.gz')
             encoded = ''.join(json.dumps(row, default=json_value, ensure_ascii=False, allow_nan=False) + '\n'
                               for row in new_rows).encode('utf-8')
-            with path.open('xb' if self.flushed_steps == 0 else 'ab') as stream:
-                stream.write(gzip.compress(encoded, mtime=0))
-                stream.flush()
-                os.fsync(stream.fileno())
+            if self.writer is not None:
+                started = time.monotonic()
+                _, backpressure = self.writer.enqueue(encoded)
+                self.add_timing('log_enqueue_wall_s', time.monotonic() - started)
+                self.add_timing('log_backpressure_wall_s', backpressure)
+            else:
+                started = time.monotonic()
+                with path.open('xb' if self.flushed_steps == 0 else 'ab') as stream:
+                    stream.write(gzip.compress(encoded, mtime=0))
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                self.add_timing('log_sync_write_wall_s', time.monotonic() - started)
             self.flushed_steps = len(self.steps)
+        if complete and self.writer is not None:
+            self.add_timing('log_drain_wall_s', self.writer.drain())
+            self.writer.close()
         self.seconds = time.monotonic() - self.started
         if hasattr(self.config.omr, 'run_dir'):
             ledger = Path(self.config.omr.run_dir) / 'cost-ledger' / Path(self.config.omr.attempt_dir).name
@@ -278,7 +305,18 @@ class RootCollectorObserver:
                 'collection_complete': complete, 'action_steps': len(self.steps),
                 'prompt_tokens': sum(row['prompt_tokens'] for row in self.steps),
                 'response_tokens': sum(row['response_tokens'] for row in self.steps),
-                'performance': self.performance, **self.compute})
+                'performance': self.performance,
+                'log_watermark': {'enqueued': self.writer.enqueued, 'durable': self.writer.durable,
+                                  'chunks': list(self.writer.chunks)} if self.writer else
+                                 {'enqueued': self.flushed_steps, 'durable': self.flushed_steps, 'chunks': []},
+                **self.compute})
+
+    def durable_state(self):
+        writer = getattr(self, 'writer', None)
+        if writer is not None:
+            self.add_timing('log_drain_wall_s', writer.drain())
+            return {'enqueued': writer.enqueued, 'durable': writer.durable, 'chunks': list(writer.chunks)}
+        return {'enqueued': self.flushed_steps, 'durable': self.flushed_steps, 'chunks': []}
 
     def finish(self):
         for slot in range(self.real_count):
@@ -314,6 +352,29 @@ def accumulated_cost(run_dir):
             result['train_rollout_seconds'] += row['seconds']
         else:
             result['eval_attempts'] += row['attempts']
+    return result
+
+
+def split_cost(run_dir):
+    """Train and evaluation costs include failed attempts, without conflating them."""
+    result = {}
+    for path in (Path(run_dir) / 'cost-ledger').glob('*/*.json'):
+        row = json.loads(path.read_text())
+        split = 'train' if row['split'] == 'train' else 'eval'
+        for key in ('action_steps', 'model_action_slots', 'model_prompt_tokens', 'model_response_tokens',
+                    'active_requests', 'model_requests', 'generation_padding_requests', 'eval_padding_requests',
+                    'legacy_done_model_requests', 'done_requests_avoided', 'discarded_technical_steps'):
+            name = f'cost/{split}/{key}'
+            result[name] = result.get(name, 0) + row.get(key, 0)
+        for key, value in row.get('performance', {}).items():
+            name = f'perf/{split}/{key}'
+            result[name] = result.get(name, 0.) + value
+    for path in (Path(run_dir) / 'attempts').glob('*/allocation.json'):
+        row = json.loads(path.read_text())
+        for key in ('wall_seconds', 'gpu_hours'):
+            if key in row:
+                name = 'cost/allocation/' + key
+                result[name] = result.get(name, 0.) + row[key]
     return result
 
 
