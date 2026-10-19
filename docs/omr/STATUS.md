@@ -1,6 +1,37 @@
 # Execution status — 2026-10-19
 
-## Current: historical-attempt source check repaired
+## Current: all six repaired formal tasks and continuations submitted
+
+The user returned successful submissions from controller
+**1d30ff32a790993b2b4738b32303e14d2282f1a4**, with all training frozen at
+**98d7a695f4a4b333e2984b731330d088612cf81b**:
+
+| Benchmark | Arm | Formal task | Own-parent continuation |
+| --- | --- | --- | --- |
+| ALFWorld | baseline | 167234_0 | 167235_0 |
+| ALFWorld | full | 167234_3 | 167236_3 |
+| WebShop | baseline | 167237_1 | 167238_1 |
+| WebShop | full | 167237_4 | 167239_4 |
+| ScienceWorld | baseline | 167240_2 | 167241_2 |
+| ScienceWorld | full | 167240_5 | 167242_5 |
+
+Each task requests 18 hours, two H200, 32 CPUs and 256 GiB. The three formal
+arrays are independent with two concurrent arms each; each continuation has
+`afterany` on only its own formal task. Resume requires a complete latest
+checkpoint from that new logical run. No smoke jobs or node exclusions.
+
+Cancellation was requested for 167126_0, 167127_3, 167129_2, 167130_5,
+167125_0, 167125_3, 167128_2 and 167128_5. These targets were withdrawn or
+already exiting before replacement; the output does not establish that node
+cleanup finished. Old files remain preserved and ancient 166362_2 is untouched.
+The journal remains `training-submissions/first-update-167125-166698-167128/`.
+Formal tags are `update-fix-167125`, `update-fix-166698`, `update-fix-167128` for
+ALFWorld, WebShop and ScienceWorld respectively. Do not submit another chain or
+change the frozen source merely because a newer documentation commit exists.
+This is submission evidence only: new startup, optimizer, checkpoint and SwanLab
+execution results have not yet been returned.
+
+## Earlier recovery: historical-attempt source check repaired
 
 The user ran controller **5bad4e6** with training **98d7a69**. It stopped before
 any cancellation or submission at WebShop baseline's historical attempt

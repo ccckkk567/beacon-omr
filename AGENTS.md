@@ -350,6 +350,19 @@ Current user overrides to the execution specification:
   tests pass. Keep training 98d7a69, existing journal/tags and options; use the
   repaired controller. No new HPC submissions have yet been reported.
 
+- Latest user output confirms successful recovery submissions with controller
+  1d30ff32a790993b2b4738b32303e14d2282f1a4 and training fixed at
+  98d7a695f4a4b333e2984b731330d088612cf81b. ALFWorld formal 167234_0/3,
+  resumes 167235_0/167236_3; WebShop formal 167237_1/4, resumes 167238_1/167239_4;
+  ScienceWorld formal 167240_2/5, resumes 167241_2/167242_5. All twelve tasks
+  request 18h / 2 H200 / 32 CPU / 256 GiB. Formal pairs are independent;
+  continuations depend on their own parents. Do not resubmit or migrate training
+  to a newer documentation commit. The same first-update journal records all
+  accepted IDs and the three update-fix tags isolate their outputs/SwanLab runs.
+  Withdrawal was requested for the eight former ALFWorld/ScienceWorld tasks;
+  node cleanup completion is not established. Old files and ancient 166362_2
+  were preserved. No new execution, optimizer or checkpoint result is available.
+
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
 upstream per-environment code profiles and baseline/full common fixes. A milestone
