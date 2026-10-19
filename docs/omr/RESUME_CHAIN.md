@@ -79,7 +79,24 @@ replacement. Accepted child IDs are preserved and skipped. A definite
 network replies remain blocked pending inspection to avoid duplicates. After
 all six submissions succeed, another invocation only prints their recorded IDs.
 This is one replacement round, not an automatic loop that recreates jobs after
-future cancellation. Replacement job IDs have not yet been returned.
+future cancellation.
+
+The user returned a partial successful replacement submission from controller
+`c86ad2bcef86184f3a3def2b1f053866aa22887f`:
+
+| Condition | First job | Replacement job/status |
+|---|---|---|
+| ALFWorld baseline | 166362_0 | 166437_0 submitted |
+| WebShop baseline | 166362_1 | 166438_1 submitted |
+| ScienceWorld baseline | 166362_2 | Quota rejected; not submitted |
+| ALFWorld full | 166362_3 | Not attempted yet |
+| WebShop full | 166362_4 | Not attempted yet |
+| ScienceWorld full | 166362_5 | Not attempted yet |
+
+Keep that exact frozen controller for retries. The same command skips accepted
+indices 0–1 and attempts indices 2–5 as quota permits. Do not delete or reset
+`jobs-replacement.json`, or switch controller revisions to retry this chain.
+No execution/optimizer output from these replacement jobs has been returned.
 
 ## Resources and execution
 
@@ -139,6 +156,7 @@ quota rejection/retry, ambiguous replies and original-receipt binding. Four
 additional fixtures cover the observed empty-accounting regression, exact
 confirmed IDs, active old jobs and failed live queries. All 20
 resume/replacement/monitoring tests passed locally. Real Slurm IDs and resumed
-GPU updates remain evidence to return from the HPC terminal. The Slurm IDs above
-are the cancelled original submissions; replacement IDs and resumed execution
-have not yet been returned.
+GPU updates remain evidence to return from the HPC terminal. The first table
+records cancelled original submissions; the second records the two accepted
+replacements and four outstanding submissions. Resumed execution is not yet
+evidenced.

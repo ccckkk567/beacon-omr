@@ -38,8 +38,12 @@ replacement attempt at c7e2f59 stopped before sbatch because sacct returned no
 old-job records; no replacement job was submitted. The user already supplied
 successful cancellation output, so the new explicit confirmed-ID option binds
 that evidence to the original ledger and checks live queue absence across all
-states. All 20 targeted resume/replacement/monitoring tests passed. Replacement
-IDs are still pending. The latest returned queue snapshot shows formal 166362
+states. All 20 targeted resume/replacement/monitoring tests passed. The returned
+c86ad2b submission output confirms **166437_0** (ALFWorld baseline) and
+**166438_1** (WebShop baseline). Index 2 was rejected by the submit-job quota;
+indices 2–5 remain unsubmitted. Retry the same command from frozen controller
+c86ad2bcef86184f3a3def2b1f053866aa22887f to preserve these accepted jobs and fill
+the remainder. The latest returned queue snapshot shows formal 166362
 and smoke 166370 both pending for Priority. Training revision c193e61 and SwanLab
 recovery remain unchanged.
 
