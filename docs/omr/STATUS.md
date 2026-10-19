@@ -1,11 +1,44 @@
 # Execution status — 2026-10-19
 
-## Current priority: old ScienceWorld cleanup on JDS9B74
+## Current priority: independent ScienceWorld restart
 
-The user explicitly requested diagnosing the persistent COMPLETING state,
-rather than an isolated-output restart. No such isolation changes were made.
-Recovery still has submitted **no new ScienceWorld jobs**. Later recovery
-attempts are blocked only by **166362_2**, physical job **166572**, JDS9B74.
+The user now authorizes an alternative to waiting for the old COMPLETING job.
+`isolate_scienceworld.py` prepares one new generation tagged **restart-166362**,
+with one frozen source for controller, baseline/full and continuations:
+
+- Two independent one-hour smoke jobs, two independent 18-hour formal jobs,
+  and one 18-hour continuation after each formal parent. Every job requests
+  two H200, 32 CPUs, 256 GiB and excludes **JDS9B74**. Smoke and formal jobs
+  have no dependency on each other or on old job 166362_2.
+- Formal outputs are `omr-v2-scienceworld-{baseline,full}-s0-restart-166362`;
+  their common manifest is `manifests/restart-166362/scienceworld.json`.
+  Fresh SwanLab experiment names use these new identities. Continuations
+  retain normal monitoring lineage and accept only their new formal run's
+  complete checkpoint. Old training output is neither adopted nor removed.
+- The old recovery must have submitted nothing. Under its original lock, the
+  controller backs up `retirement.json` to `retirement-before-isolation.json`
+  and marks the former request superseded. Frozen d89c798 then refuses to run
+  that request again. Submission IDs are journaled at
+  `training-submissions/scienceworld-restart-166362/jobs.json`; quota retries
+  retain accepted jobs, and uncertain submissions block automatic retries.
+- Existing ALFWorld and WebShop jobs, environments, models and old ScienceWorld
+  files remain intact. The old cancelled baseline may remain COMPLETING on
+  JDS9B74; other still-active old ScienceWorld jobs block this transition.
+
+**46 targeted local tests passed**, covering the ledger transition, duplicate
+submission prevention, partial quota retries, actual launch/config composition,
+new checkpoint selection, paired protocol invariance, startup and monitoring.
+Both changed batch scripts pass Bash parsing. These checks do not establish
+native GPU execution. **No new ScienceWorld submission IDs have been returned.**
+The node cleanup cause and Ray rank-zero registration failure remain unresolved;
+the restart includes the previously added startup diagnostics.
+
+## Earlier investigation: old ScienceWorld cleanup on JDS9B74
+
+The user first requested diagnosing the persistent COMPLETING state. The
+original recovery submitted **no new ScienceWorld jobs**; its attempts remained
+blocked by **166362_2**, physical job **166572**, JDS9B74. The new approach above
+supersedes retrying that recovery command.
 
 At **12:16:15 +08**, 7m07s after the recorded EndTime of **12:09:08**:
 
@@ -57,8 +90,8 @@ It requested cancellation of **166514_2, 166517_5, 166362_2, 166362_5** and
 stopped because **166362_2/5** were still exiting. **No replacement jobs were
 submitted.** The controller did not request cancellation of either smoke in this
 invocation. Preserve the existing retirement ledger under
-`training-submissions/scienceworld-fdbf5569b82d9c1afd1ad2578c914adf00d0f417/`;
-rerun the same command after cleanup to continue its journaled submission.
+`training-submissions/scienceworld-fdbf5569b82d9c1afd1ad2578c914adf00d0f417/`.
+The isolated restart described above replaces this pending recovery request.
 The new source improves startup observability; registration timeout is now a
 known failure site, but its underlying cause has not been fixed or verified.
 

@@ -14,6 +14,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from experiments.omr.latest_checkpoint import atomic_json
 from experiments.omr.preparation import write_runtime_paths
+from experiments.omr.run_paths import formal_run_dir, formal_manifest_path
 
 
 def reused_runtime(root, name, base):
@@ -44,13 +45,14 @@ def main():
     parser.add_argument('--prepared-report', required=True)
     parser.add_argument('--benchmark', choices=['alfworld', 'webshop', 'scienceworld'], required=True)
     parser.add_argument('--method', choices=['baseline', 'full'], required=True)
+    parser.add_argument('--run-tag', default='')
     args = parser.parse_args()
     if not os.environ.get('SLURM_JOB_ID'):
         parser.error('Training must run inside an allocated two-GPU Slurm job')
     import fcntl
     root = Path(args.root).absolute()
-    run_id = f'omr-v2-{args.benchmark}-{args.method}-s0'
-    run_dir = root / 'analysis/beacon-omr' / run_id
+    run_dir = formal_run_dir(root, args.benchmark, args.method, args.run_tag)
+    run_id = run_dir.name
     run_dir.mkdir(parents=True, exist_ok=True)
     # A duplicate submission must never write the same logical run concurrently.
     with (run_dir / '.run.lock').open('a+') as lock:
@@ -74,6 +76,9 @@ def main():
             'run_dir': str(run_dir), 'attempt_dir': str(attempt), 'source_commit': commit,
             'model': site['model'], 'webshop': site['webshop'], 'prepared_source': site['source_commit'],
             'runtime': str(runtime), 'simulator_python': str(actor_runtime / 'bin/python') if actor_runtime else None}
+        if args.run_tag:
+            payload.update(run_tag=args.run_tag,
+                manifest_path=str(formal_manifest_path(root, args.benchmark, args.run_tag)))
         atomic_json(attempt / 'launch.json', payload)
         atomic_json(run_dir / 'progress.json', {'status': 'starting', 'attempt': str(attempt),
             'source_commit': commit, 'checkpoint_pointer': str(run_dir / 'checkpoints/latest.json')})

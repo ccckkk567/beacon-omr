@@ -155,10 +155,9 @@ Current user overrides to the execution specification:
   166362_2/5 were exiting. No replacement jobs were submitted. Continue with the
   same controller/retirement ledger after cleanup; do not create another chain,
   hot-patch frozen sources or claim the startup instrumentation fixes the cause.
-- The user explicitly redirected work to diagnosing why old ScienceWorld
-  166362_2 (physical allocation 166572) remains COMPLETING. Do not pursue the
-  proposed independent-output resubmission workaround. It was only discussed;
-  no isolation code changes or jobs were made. At 2026-10-19 12:16:15 +08,
+- The user initially redirected work to diagnosing why old ScienceWorld
+  166362_2 (physical allocation 166572) remains COMPLETING, pausing the proposed
+  independent-output restart at that point. At 2026-10-19 12:16:15 +08,
   7m07s after EndTime 12:09:08, JDS9B74 was MIXED+COMPLETING, load 602.63,
   CPUAlloc=56, AllocMem=753664 MiB, allocated GPUs=6. Controller step records
   still list extern/batch/0 as RUNNING. sstat returned "No steps running" and
@@ -172,6 +171,21 @@ Current user overrides to the execution specification:
   slurmstepd/slurmd and epilog evidence is still required. Do not retry ptrace,
   failed srun launches, broad kills or assume SSH access. New ScienceWorld
   jobs remain unsubmitted; preserve repaired ALFWorld/WebShop jobs.
+- The latest user instruction, "算了，那还是换种方式吧", authorizes the
+  independent-output ScienceWorld restart instead of waiting for old cleanup.
+  Use isolate_scienceworld.py with one full revision for controller/training.
+  Keep old jobs/files intact, exclude JDS9B74 from the six new allocations, and
+  use run tag restart-166362 for formal outputs, manifests and SwanLab names.
+  Submit both one-hour smoke arms, both independent 18-hour formal arms and
+  each formal arm's own 18-hour afterany continuation. Keep model/env/protocol
+  settings unchanged. The continuation reads only its new formal checkpoint.
+  Preserve the old retirement receipt in retirement-before-isolation.json;
+  mark its original ledger superseded under the same submission lock so even
+  frozen d89c798 refuses to create a second chain. New journal lives under
+  training-submissions/scienceworld-restart-166362/jobs.json. Quota retries keep
+  accepted IDs; uncertain submission outcomes require inspection. No new HPC
+  submission output has been returned yet. This avoids the old output/cleanup
+  dependency; it is not evidence that the Ray registration failure is fixed.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

@@ -5,7 +5,37 @@ launcher supports **baseline and Full OMR** on ALFWorld, WebShop and ScienceWorl
 Both arms use the same frozen source. Native GPU training and learning curves
 remain unverified until actual job logs are returned.
 
-## Run
+## Current ScienceWorld restart
+
+The old baseline 166362_2 remains COMPLETING on JDS9B74. The user authorized
+an independent-output restart, preserving its files and the existing ALFWorld
+and WebShop jobs. Use `experiments/omr/isolate_scienceworld.py --root "$ROOT"
+--revision "$REV"` from the clean frozen checkout supplied in the chat. This
+controller creates the matching training checkout, backs up and supersedes the
+unsubmitted d89c798 recovery request under its original lock, then submits:
+
+| Conditions | Time per job | Dependency |
+| --- | --- | --- |
+| ScienceWorld baseline/full smoke | 1 hour | None; two may run together |
+| ScienceWorld baseline/full formal | 18 hours | None; two may run together |
+| One continuation per formal arm | 18 hours | afterany of its own new parent |
+
+Each job retains two H200, 32 CPUs and 256 GiB on testqueue, with JDS9B74 excluded.
+Formal paths and SwanLab experiment names have suffix `-restart-166362`; both
+arms share `manifests/restart-166362/scienceworld.json`. Model, environment,
+seed, batch, reward and method settings are unchanged. Smoke retains its own
+array-specific paths and deletes only its owned checkpoint after saving and
+recording the result. Formal checkpoints are retained. Continuations resume
+only the matching new run and preserve its monitoring lineage; no complete
+checkpoint means no restart from update zero.
+
+On a quota rejection, rerun the same command: accepted IDs remain in
+`training-submissions/scienceworld-restart-166362/jobs.json`. An uncertain
+submission response blocks blind retries. Do not rerun the superseded d89c798
+recovery command or submit another generic array. GPU acceptance and the cause
+of the earlier worker registration timeout are still pending.
+
+## Original six-condition submission (historical)
 
 Use the assigned work root, accepted preparation report `webshop-prepare-165873/report.json`
 and the full published revision supplied in the chat:

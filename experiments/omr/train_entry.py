@@ -41,7 +41,8 @@ def compose_config(payload):
         'logical_run_id': payload['run_id'], 'run_dir': payload['run_dir'],
         'attempt_dir': payload['attempt_dir'], 'source_commit': payload['source_commit'],
         'protocol_signature': protocol_signature,
-        'manifest_path': str(Path(payload['root']) / 'analysis/beacon-omr/manifests' / (payload['benchmark'] + '.json'))})
+        'manifest_path': payload.get('manifest_path', str(Path(payload['root']) /
+            'analysis/beacon-omr/manifests' / (payload['benchmark'] + '.json')))})
     config.omr.tracking = {'resume': 'never', 'mode': 'online',
                            'logdir': str(Path(payload['attempt_dir']) / 'swanlab')}
     OmegaConf.resolve(config)

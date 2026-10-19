@@ -17,6 +17,7 @@ import sys
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from experiments.omr.latest_checkpoint import LatestCheckpoint, atomic_json
+from experiments.omr.run_paths import formal_run_dir
 
 BENCHMARKS = ('alfworld', 'webshop', 'scienceworld')
 
@@ -221,6 +222,7 @@ def main():
     parser.add_argument('--parent-array', required=True, type=int)
     parser.add_argument('--training-revision', required=True)
     parser.add_argument('--index', type=int)
+    parser.add_argument('--run-tag', default='', help='Isolated formal run tag, for guard only')
     parser.add_argument('--replace-cancelled', action='store_true',
                         help='Submit one replacement round for the six cancelled jobs in the original ledger')
     parser.add_argument('--confirmed-cancelled-jobs',
@@ -231,6 +233,8 @@ def main():
         parser.error('Use a full training revision and a positive parent array ID')
     if args.replace_cancelled and args.mode != 'submit':
         parser.error('--replace-cancelled is only valid for submit')
+    if args.run_tag and args.mode != 'guard':
+        parser.error('--run-tag is only valid for guard; use the isolated paired submitter')
     if args.confirmed_cancelled_jobs is not None and not args.replace_cancelled:
         parser.error('--confirmed-cancelled-jobs requires --replace-cancelled')
     confirmed_cancelled = (args.confirmed_cancelled_jobs.split(',')
@@ -243,7 +247,7 @@ def main():
         if not os.environ.get('SLURM_JOB_ID'):
             parser.error('Checkpoint checks must run inside the allocated continuation job')
         benchmark, method = condition(args.index)
-        run_dir = root / 'analysis/beacon-omr' / f'omr-v2-{benchmark}-{method}-s0'
+        run_dir = formal_run_dir(root, benchmark, method, args.run_tag)
         receipt_dir = run_dir / 'resume-guards'
         receipt_dir.mkdir(parents=True, exist_ok=True)
         receipt = {'parent_job': f'{args.parent_array}_{args.index}', 'controller_revision': controller_revision,

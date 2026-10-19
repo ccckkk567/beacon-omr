@@ -16,6 +16,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from experiments.omr.latest_checkpoint import atomic_json
 from experiments.omr.resume_chain import clean_revision, command
+from experiments.omr.run_paths import formal_run_id
 
 BENCHMARKS = ('alfworld', 'webshop', 'scienceworld')
 
@@ -55,7 +56,12 @@ def submit_once(state, key, argv, ledger, invoke):
 
 
 def submit_all(root, training_revision, controller_revision, ledger, invoke=command,
-               benchmark='alfworld', include_smoke=False):
+               benchmark='alfworld', include_smoke=False, run_tag='', exclude_nodes=()):
+    formal_run_id(benchmark, 'baseline', run_tag)
+    exclude_nodes = tuple(exclude_nodes)
+    if any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]*', node) for node in exclude_nodes):
+        raise ValueError('Excluded nodes must be explicit node names')
+    run_args = [run_tag] if run_tag else []
     index = BENCHMARKS.index(benchmark)
     indices = [index, index + 3]
     array = f'{index},{index + 3}%2'
@@ -65,6 +71,8 @@ def submit_all(root, training_revision, controller_revision, ledger, invoke=comm
                'controller_revision': controller_revision, 'controller_repo': str(REPO),
                'prepared_report': str(report), 'indices': indices, 'benchmark': benchmark,
                'include_smoke': include_smoke}
+    if run_tag or exclude_nodes:
+        binding.update(run_tag=run_tag, exclude_nodes=list(exclude_nodes))
     state = json.loads(ledger.read_text()) if ledger.exists() else {'binding': binding, 'jobs': {}}
     if state['binding'] != binding:
         raise ValueError('Existing training submission belongs to a different request')
@@ -76,6 +84,8 @@ def submit_all(root, training_revision, controller_revision, ledger, invoke=comm
     resources = ['sbatch', '--parsable', '--account=prjsnnn0000269', '--partition=testqueue',
                  '--nodes=1', '--ntasks=1', '--gres=gpu:h200:2', '--cpus-per-task=32',
                  '--mem=256G', '--chdir=' + str(root)]
+    if exclude_nodes:
+        resources.append('--exclude=' + ','.join(exclude_nodes))
     if include_smoke:
         smoke = submit_once(state, 'smoke', resources + [
             '--time=01:00:00', '--array=' + array, '--job-name=omr-smoke',
@@ -87,14 +97,14 @@ def submit_all(root, training_revision, controller_revision, ledger, invoke=comm
         '--time=18:00:00', '--array=' + array, '--job-name=omr-training',
         '--output=' + str(root / 'logs/beacon-omr/train-%A_%a.out'),
         str(training / 'experiments/omr/train.sbatch'), str(training), str(root),
-        str(report), training_revision], ledger, invoke)
+        str(report), training_revision] + run_args, ledger, invoke)
     print(f'Training array: {parent} ({indices[0]}={benchmark} baseline; {indices[1]}={benchmark} full)', flush=True)
     for index, method in zip(indices, ('baseline', 'full')):
         child = submit_once(state, f'resume{index}', resources + [
             '--time=18:00:00', f'--array={index}', '--job-name=omr-resume', f'--dependency=afterany:{parent}_{index}',
             '--output=' + str(root / 'logs/beacon-omr/resume-%A_%a.out'),
             str(REPO / 'experiments/omr/resume_training.sbatch'), str(REPO), str(training),
-            str(root), str(report), training_revision, parent, controller_revision], ledger, invoke)
+            str(root), str(report), training_revision, parent, controller_revision] + run_args, ledger, invoke)
         print(f'Resume {benchmark}/{method}: {child}_{index} <- {parent}_{index}', flush=True)
     return state
 
