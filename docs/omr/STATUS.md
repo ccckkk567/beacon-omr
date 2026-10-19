@@ -8,8 +8,9 @@ with one frozen source for controller, baseline/full and continuations:
 
 - Two independent one-hour smoke jobs, two independent 18-hour formal jobs,
   and one 18-hour continuation after each formal parent. Every job requests
-  two H200, 32 CPUs, 256 GiB and excludes **JDS9B74**. Smoke and formal jobs
-  have no dependency on each other or on old job 166362_2.
+  two H200, 32 CPUs and 256 GiB. Per the user's clarification, node selection
+  stays with Slurm: **JDS9B74 is not excluded**. Smoke and formal jobs have no
+  dependency on each other or on old job 166362_2.
 - Formal outputs are `omr-v2-scienceworld-{baseline,full}-s0-restart-166362`;
   their common manifest is `manifests/restart-166362/scienceworld.json`.
   Fresh SwanLab experiment names use these new identities. Continuations
@@ -30,6 +31,9 @@ submission prevention, partial quota retries, actual launch/config composition,
 new checkpoint selection, paired protocol invariance, startup and monitoring.
 Both changed batch scripts pass Bash parsing. These checks do not establish
 native GPU execution. **No new ScienceWorld submission IDs have been returned.**
+After removing node exclusions as requested, **19 affected controller tests
+passed again**, including assertions that submissions do not select or exclude
+any node.
 The node cleanup cause and Ray rank-zero registration failure remain unresolved;
 the restart includes the previously added startup diagnostics.
 

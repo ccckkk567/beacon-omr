@@ -20,7 +20,8 @@ unsubmitted d89c798 recovery request under its original lock, then submits:
 | ScienceWorld baseline/full formal | 18 hours | None; two may run together |
 | One continuation per formal arm | 18 hours | afterany of its own new parent |
 
-Each job retains two H200, 32 CPUs and 256 GiB on testqueue, with JDS9B74 excluded.
+Each job retains two H200, 32 CPUs and 256 GiB on testqueue. There is no node
+exclusion or node selection constraint; Slurm may also allocate JDS9B74.
 Formal paths and SwanLab experiment names have suffix `-restart-166362`; both
 arms share `manifests/restart-166362/scienceworld.json`. Model, environment,
 seed, batch, reward and method settings are unchanged. Smoke retains its own

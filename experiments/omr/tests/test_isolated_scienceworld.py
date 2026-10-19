@@ -118,7 +118,7 @@ class IsolatedScienceTests(unittest.TestCase):
                     isolate.switch_recovery(root, NEW_REV, scheduler, 'linz3')
                     return submit_all(root, NEW_REV, NEW_REV, new / 'jobs.json', submit,
                         benchmark='scienceworld', include_smoke=True,
-                        run_tag=isolate.RUN_TAG, exclude_nodes=isolate.EXCLUDE_NODES)
+                        run_tag=isolate.RUN_TAG)
                 with self.assertRaisesRegex(RuntimeError, 'quota rejected'):
                     run()
                 result = run()
@@ -126,7 +126,8 @@ class IsolatedScienceTests(unittest.TestCase):
                 self.assertEqual(len(accepted), 4)
                 self.assertEqual(len(calls), 5)
                 for call in accepted:
-                    for arg in ('--exclude=JDS9B74', '--gres=gpu:h200:2', '--cpus-per-task=32', '--mem=256G'):
+                    self.assertFalse(any(arg.startswith(('--exclude', '--nodelist')) for arg in call))
+                    for arg in ('--gres=gpu:h200:2', '--cpus-per-task=32', '--mem=256G'):
                         self.assertIn(arg, call)
                 for call in accepted[:2]:
                     self.assertIn('--array=2,5%2', call)
@@ -155,7 +156,7 @@ class IsolatedScienceTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     submit_all(root, NEW_REV, NEW_REV, new / 'jobs.json', invoke,
                         benchmark='scienceworld', include_smoke=True,
-                        run_tag=isolate.RUN_TAG, exclude_nodes=isolate.EXCLUDE_NODES)
+                        run_tag=isolate.RUN_TAG)
             self.assertEqual(len(calls), 1)
 
     def test_path_validation_and_shell_identity_helper(self):

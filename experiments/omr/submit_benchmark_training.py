@@ -56,11 +56,8 @@ def submit_once(state, key, argv, ledger, invoke):
 
 
 def submit_all(root, training_revision, controller_revision, ledger, invoke=command,
-               benchmark='alfworld', include_smoke=False, run_tag='', exclude_nodes=()):
+               benchmark='alfworld', include_smoke=False, run_tag=''):
     formal_run_id(benchmark, 'baseline', run_tag)
-    exclude_nodes = tuple(exclude_nodes)
-    if any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]*', node) for node in exclude_nodes):
-        raise ValueError('Excluded nodes must be explicit node names')
     run_args = [run_tag] if run_tag else []
     index = BENCHMARKS.index(benchmark)
     indices = [index, index + 3]
@@ -71,8 +68,8 @@ def submit_all(root, training_revision, controller_revision, ledger, invoke=comm
                'controller_revision': controller_revision, 'controller_repo': str(REPO),
                'prepared_report': str(report), 'indices': indices, 'benchmark': benchmark,
                'include_smoke': include_smoke}
-    if run_tag or exclude_nodes:
-        binding.update(run_tag=run_tag, exclude_nodes=list(exclude_nodes))
+    if run_tag:
+        binding.update(run_tag=run_tag)
     state = json.loads(ledger.read_text()) if ledger.exists() else {'binding': binding, 'jobs': {}}
     if state['binding'] != binding:
         raise ValueError('Existing training submission belongs to a different request')
@@ -84,8 +81,6 @@ def submit_all(root, training_revision, controller_revision, ledger, invoke=comm
     resources = ['sbatch', '--parsable', '--account=prjsnnn0000269', '--partition=testqueue',
                  '--nodes=1', '--ntasks=1', '--gres=gpu:h200:2', '--cpus-per-task=32',
                  '--mem=256G', '--chdir=' + str(root)]
-    if exclude_nodes:
-        resources.append('--exclude=' + ','.join(exclude_nodes))
     if include_smoke:
         smoke = submit_once(state, 'smoke', resources + [
             '--time=01:00:00', '--array=' + array, '--job-name=omr-smoke',

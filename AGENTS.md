@@ -174,8 +174,10 @@ Current user overrides to the execution specification:
 - The latest user instruction, "算了，那还是换种方式吧", authorizes the
   independent-output ScienceWorld restart instead of waiting for old cleanup.
   Use isolate_scienceworld.py with one full revision for controller/training.
-  Keep old jobs/files intact, exclude JDS9B74 from the six new allocations, and
-  use run tag restart-166362 for formal outputs, manifests and SwanLab names.
+  Keep old jobs/files intact and use run tag restart-166362 for formal outputs,
+  manifests and SwanLab names. The user explicitly clarified that only the old
+  job wait should be removed: do not exclude JDS9B74 or constrain node selection;
+  let Slurm allocate normally.
   Submit both one-hour smoke arms, both independent 18-hour formal arms and
   each formal arm's own 18-hour afterany continuation. Keep model/env/protocol
   settings unchanged. The continuation reads only its new formal checkpoint.

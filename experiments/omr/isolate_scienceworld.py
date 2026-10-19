@@ -22,7 +22,6 @@ from experiments.omr.run_paths import formal_run_dir, formal_manifest_path
 from experiments.omr.submit_benchmark_training import submit_all
 
 RUN_TAG = 'restart-166362'
-EXCLUDE_NODES = ('JDS9B74',)
 PREVIOUS_CONTROL = 'd89c79828be5f46f0262f8ba11bdb55cba26ffa4'
 
 
@@ -48,7 +47,7 @@ reject a subsequent invocation before it can cancel or submit anything.
     backup = old / 'retirement-before-isolation.json'
     request = {'root': str(root), 'training_revision': revision,
                'controller_revision': revision, 'run_tag': RUN_TAG,
-               'exclude_nodes': list(EXCLUDE_NODES), 'submission_record': str(new / 'jobs.json')}
+               'submission_record': str(new / 'jobs.json')}
     expected = previous_binding(root)
     superseded_binding = dict(expected, superseded_by=request)
     if (old / 'jobs.json').exists():
@@ -131,7 +130,7 @@ def main():
             switch_recovery(root, args.revision)
             submit_all(root, args.revision, args.revision, new / 'jobs.json',
                        invoke=previous.command, benchmark='scienceworld', include_smoke=True,
-                       run_tag=RUN_TAG, exclude_nodes=EXCLUDE_NODES)
+                       run_tag=RUN_TAG)
         except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as error:
             print(str(error), file=sys.stderr)
             print('Submission record: ' + str(new / 'jobs.json'), file=sys.stderr)
