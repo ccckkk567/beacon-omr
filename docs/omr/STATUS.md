@@ -5,10 +5,12 @@ preflight/continuation jobs. **Baseline and Full OMR training are now connected
 for all three benchmarks.** The user reports that the earlier v1 baseline array
 was submitted and subsequently paused by the user. The v2 array **166362** was
 reported submitted with all six elements pending on testqueue. No HPC optimizer
-update has been returned yet. One dependent 18-hour continuation per element is
-prepared; submission is executed by the user. See `RESUME_CHAIN.md`.
-The 11 targeted resume-chain/monitoring fixtures passed locally; this does not
-establish actual Slurm submission or a resumed GPU optimizer update.
+update has been returned yet. The user returned successful submission receipts
+for six dependent 18-hour continuations: **166364_0, 166365_1, 166366_2,
+166367_3, 166368_4, 166369_5**, corresponding to parent indices 0–5.
+See `RESUME_CHAIN.md` for the recorded mapping; do not submit another chain.
+The 11 targeted resume-chain/monitoring fixtures passed locally. Submission is
+now evidenced, but running status and resumed GPU updates are not yet evidenced.
 
 See `TRAINING.md` for actual submission/resume commands. Each array element uses
 two H200 and trains one benchmark/arm for 150 updates; all six elements may run

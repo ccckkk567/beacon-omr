@@ -4,6 +4,22 @@ The user reported v2 array **166362**, elements 0–5, pending on testqueue, and
 requested one additional 18-hour job per condition. The earlier v1 baseline
 jobs were paused by the user. Do not resume or cancel those older jobs.
 
+The user returned successful submission output on 2026-10-19:
+
+| Condition | First job | Continuation job |
+|---|---|---|
+| ALFWorld baseline | 166362_0 | 166364_0 |
+| WebShop baseline | 166362_1 | 166365_1 |
+| ScienceWorld baseline | 166362_2 | 166366_2 |
+| ALFWorld full | 166362_3 | 166367_3 |
+| WebShop full | 166362_4 | 166368_4 |
+| ScienceWorld full | 166362_5 | 166369_5 |
+
+Orchestration revision: `6993666a2a8305072dbb3024fcec76100fa943ec`.
+Keep that existing orchestration checkout if repeating the idempotent command;
+do not submit an additional chain from a different controller revision.
+These receipts establish submission, not running status or completed GPU updates.
+
 The six continuations retain the frozen training revision
 `c193e617acf03d94e18cad023934e65e64ff6923`, identical logical runs, manifests,
 model, optimizer and OMR checkpoint state. The newer checkout provides only
@@ -69,4 +85,5 @@ Local fixtures cover all six individual dependencies, repeat-submission
 idempotence, uncertain submission handling, wrong parent/source rejection,
 missing/damaged checkpoints, completed-run skipping, outstanding final
 evaluation, and SwanLab sequence/rollback behavior. Real Slurm IDs and resumed
-GPU updates remain evidence to return from the HPC terminal.
+GPU updates remain evidence to return from the HPC terminal. The Slurm IDs above
+have now been returned; resumed execution has not.

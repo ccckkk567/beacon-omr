@@ -37,6 +37,10 @@ Current user overrides to the execution specification:
   for its own predecessor. Preserve that training revision during resume; newer
   orchestration scripts may submit/check it without migrating training state.
   Continue the SwanLab run when possible; the user also permits a new linked run.
+- The user returned successful continuation submissions: indices 0–5 map to
+  166364_0, 166365_1, 166366_2, 166367_3, 166368_4, 166369_5 respectively.
+  They use orchestration revision 6993666a2a8305072dbb3024fcec76100fa943ec.
+  Do not submit an additional chain. No optimizer/resume logs have been returned yet.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the
