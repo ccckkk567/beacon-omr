@@ -21,6 +21,11 @@ def compose_config(payload):
     config = OmegaConf.merge(OmegaConf.load(repo / 'verl/trainer/config/ppo_trainer.yaml'),
         OmegaConf.load(profiles / 'common.yaml'), OmegaConf.load(profiles / (payload['benchmark'] + '.yaml')),
         OmegaConf.load(profiles / (method + '.yaml')))
+    execution = payload.get('execution_profile_id', 'perturn-legacy-v1')
+    writer = payload.get('writer_profile_id', 'sync-v1')
+    if execution not in ('perturn-legacy-v1', 'perturn-active-v1') or writer not in ('sync-v1', 'bounded-v1'):
+        raise ValueError('Unknown execution/writer profile')
+    config.omr.update(execution_profile_id=execution, writer_profile_id=writer)
     protocol_signature = digest([OmegaConf.to_container(config, resolve=True), payload['model'],
                                  payload['source_commit'], 'omr-protocol-v2'])
     config.actor_rollout_ref.model.path = payload['model']['path']

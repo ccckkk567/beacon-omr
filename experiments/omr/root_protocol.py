@@ -51,7 +51,8 @@ def step_workers(vector, workers, actions):
     if not hasattr(vector, 'omr_tasks'):
         return ray.get([worker.step.remote(action) for worker, action in zip(workers, actions)])
     cache = getattr(vector, '_omr_terminal', {})
-    active = [i for i in range(len(workers)) if i not in cache]
+    inactive = getattr(vector, '_omr_inactive_slots', set())
+    active = [i for i in range(len(workers)) if i not in cache and i not in inactive]
     method = 'omr_step' if getattr(vector, '_omr_full_collection', False) else 'step'
     values = ray.get([getattr(workers[i], method).remote(actions[i]) for i in active])
     result = dict(zip(active, values))
@@ -60,7 +61,21 @@ def step_workers(vector, workers, actions):
         if bool(done[0] if isinstance(done, (list, tuple)) else done):
             cache[i] = deepcopy(value)
     vector._omr_terminal = cache
-    return [result[i] if i in result else deepcopy(cache[i]) for i in range(len(workers))]
+    template = next(iter(result.values()), next(iter(cache.values()), None))
+    rows = []
+    for i in range(len(workers)):
+        if i in result:
+            rows.append(result[i])
+        elif i in cache:
+            rows.append(deepcopy(cache[i]))
+        elif i in inactive and template is not None:
+            value = list(deepcopy(template))
+            value[1] = [0.] if isinstance(value[1], (list, tuple)) else 0.
+            value[2] = [True] if isinstance(value[2], (list, tuple)) else True
+            rows.append(tuple(value))
+        else:
+            raise RuntimeError('No terminal or padding environment receipt')
+    return rows
 
 
 class RootCollectorObserver:
@@ -77,13 +92,98 @@ class RootCollectorObserver:
         self.manager.envs._omr_full_collection = False
         self.update, self.split, self.generation_seed = update, split, generation_seed
         self.real_count = len(tasks) if real_count is None else real_count
+        compact = getattr(self.config.omr, 'execution_profile_id', 'perturn-legacy-v1') == 'perturn-active-v1'
+        self.manager.envs._omr_inactive_slots = set(range(self.real_count, len(tasks))) if compact else set()
         self.group_n = self.config.env.rollout.n if split == 'train' else 1
         self.steps, self.summary, self.last = [], [], {}
         self.flushed_steps = 0
         self.compute = {'model_action_slots': 0, 'model_prompt_tokens': 0, 'model_response_tokens': 0}
+        self.performance, self.generation_rounds = {}, []
+        self._generation_recorded_step = None
+        self._last_heartbeat = 0.
         self.started = time.monotonic()
         self.collection_id = f'{split}-u{update:06d}-s{generation_seed}-b{self.counter:05d}'
         self.counter += 1
+
+    def phase(self, name, local_step=None, force=False):
+        now = time.monotonic()
+        self.current_phase = {'schema': 1, 'phase': name, 'wallclock': time.time(), 'monotonic': now,
+            'attempt': str(getattr(self.config.omr, 'attempt_dir', self.directory.parent)),
+            'update': self.update, 'local_step': local_step, 'collection_id': self.collection_id}
+        if force or now - self._last_heartbeat >= 30:
+            atomic_json(self.directory.parent / 'phase.json', self.current_phase)
+            self._last_heartbeat = now
+
+    def add_timing(self, key, seconds):
+        self.performance[key] = self.performance.get(key, 0.) + seconds
+
+    def on_generation_completed(self, inputs, output, indices, pad_size, local_step,
+                                preprocess_wall, generation_wall):
+        import numpy as np
+        active = getattr(self, 'active_at_generation', np.ones(len(self.tasks), dtype=bool))
+        real = indices[indices < self.real_count]
+        active_count = int(active[real].sum())
+        response_width = output.batch['responses'].shape[1]
+        prompt_tokens = int(inputs.batch['attention_mask'].sum())
+        response_tokens = int(output.batch['attention_mask'][:, -response_width:].sum())
+        self.compute['model_action_slots'] += len(output)
+        self.compute['model_prompt_tokens'] += prompt_tokens
+        self.compute['model_response_tokens'] += response_tokens
+        counts = {'active_requests': active_count, 'model_requests': len(output),
+                  'generation_padding_requests': pad_size,
+                  'eval_padding_requests': int(sum(indices >= self.real_count)),
+                  'legacy_done_model_requests': len(real) - active_count,
+                  'done_requests_avoided': int((~active[:self.real_count]).sum())
+                      if len(indices) < len(self.tasks) else 0}
+        for key, value in counts.items():
+            self.compute[key] = self.compute.get(key, 0) + value
+        self.add_timing('preprocess_wall_s', preprocess_wall)
+        self.add_timing('generation_rpc_wall_s_inclusive', generation_wall)
+        row = dict(schema=1, collection_id=self.collection_id, policy_update=self.update,
+            local_step=local_step, split=self.split, original_slots=indices.tolist(),
+            generation_padding=pad_size, seeds=inputs.non_tensor_batch.get('omr_generation_seed'),
+            policy_version=output.non_tensor_batch.get('omr_synced_policy_version'),
+            sync_sequence=output.non_tensor_batch.get('omr_weight_sync_sequence'),
+            prompt_tokens=prompt_tokens, response_tokens=response_tokens,
+            preprocess_wall_s=preprocess_wall, generation_rpc_wall_s_inclusive=generation_wall,
+            **counts)
+        # Immutable generation audit precedes environment execution, including
+        # generated tokens whose subsequent environment/receipt call fails.
+        dump_records(self.directory / (self.collection_id + f'-generation-{local_step:03d}.jsonl.gz'),
+                     [dict(row, raw_prompt_ids=inputs.non_tensor_batch.get('raw_prompt_ids'),
+                           response_token_ids=output.batch['responses'].detach().cpu().tolist())])
+        self.generation_rounds.append(row)
+        self._generation_recorded_step = local_step
+        self.flush()
+
+    def on_failure(self, error, local_step=None, actions=None):
+        import traceback
+        self.phase('failed', local_step, force=True)
+        self.compute['discarded_technical_steps'] = self.compute.get('active_requests', 0) - len(self.steps)
+        path = self.directory.parent / (self.collection_id + '-error.json')
+        record = dict(self.current_phase, run_id=getattr(self.config.omr, 'logical_run_id', None),
+            source_commit=getattr(self.config.omr, 'source_commit', None), benchmark=self.benchmark,
+            method=getattr(self.config.omr, 'method', None), policy_version=self.update,
+            update_started=self.update + 1, update_committed=self.update,
+            error_type=type(error).__name__, error_code=getattr(error, 'code', 'native_or_training_error'),
+            evidence=getattr(error, 'evidence', None), error=str(error), full_traceback=traceback.format_exc(),
+            requested_tasks=self.tasks, actions=actions,
+            actual_start_ids=getattr(self, 'actual_ids', [None] * len(self.tasks)),
+            costs_are_lower_bounds=True, performance=self.performance, **self.compute)
+        atomic_json(path, record)
+        try:
+            self.flush()
+        except Exception as flush_error:
+            # Preserve the primary training/identity exception.
+            atomic_json(path.with_name(path.stem + '-flush-error.json'), {'error': repr(flush_error)})
+
+    def performance_metrics(self):
+        prefix = 'train' if self.split == 'train' else 'eval'
+        result = {f'perf/{prefix}/{key}': value for key, value in self.performance.items()}
+        result.update({f'rollout/{key}': value for key, value in self.compute.items()
+                       if key.endswith('requests') or key == 'done_requests_avoided'})
+        result['rollout/active_request_fraction'] = self.compute.get('active_requests', 0) / max(1, self.compute['model_action_slots'])
+        return result
 
     def reset(self, observations, infos):
         from .root_contracts import identity_contract, render_comparison
@@ -112,17 +212,20 @@ class RootCollectorObserver:
 
     def record(self, batch, observations, next_observations, infos, rewards, dones, active, local_step):
         import numpy as np
-        if getattr(self.config.omr, 'protocol', False) and 'omr_synced_policy_version' not in batch.non_tensor_batch:
+        generated = np.asarray(batch.non_tensor_batch.get('has_generated_response', np.ones(len(self.tasks))), dtype=bool)
+        checked = generated & np.asarray(active, dtype=bool)
+        if checked.any() and getattr(self.config.omr, 'protocol', False) and 'omr_synced_policy_version' not in batch.non_tensor_batch:
             raise ValueError('Missing native rollout weight synchronization receipt')
         if 'omr_synced_policy_version' in batch.non_tensor_batch:
-            if not np.all(batch.non_tensor_batch['omr_synced_policy_version'] == self.update):
+            if not np.all(batch.non_tensor_batch['omr_synced_policy_version'][checked] == self.update):
                 raise ValueError('Collected responses came from a different policy version')
         batch.non_tensor_batch['task_id'] = np.array([t['id'] for t in self.tasks], dtype=object)
         batch.non_tensor_batch['start_mode'] = np.array(['root'] * len(self.tasks), dtype=object)
         width = batch.batch['responses'].shape[1]
-        self.compute['model_action_slots'] += len(self.tasks)
-        self.compute['model_prompt_tokens'] += int(batch.batch['attention_mask'][:, :-width].sum())
-        self.compute['model_response_tokens'] += int(batch.batch['attention_mask'][:, -width:].sum())
+        if self._generation_recorded_step != local_step:
+            self.compute['model_action_slots'] += int(generated.sum())
+            self.compute['model_prompt_tokens'] += int(batch.batch['attention_mask'][:, :-width].sum())
+            self.compute['model_response_tokens'] += int(batch.batch['attention_mask'][:, -width:].sum())
         for slot in range(self.real_count):
             if not active[slot]:
                 continue
@@ -143,6 +246,8 @@ class RootCollectorObserver:
                    'info': {key: info.get(key) for key in ('is_action_valid', 'raw_completed',
                        'score_pre', 'score_post', 'subgoal_completed', 'milestone_phase', 'milestone_achieved')},
                    'generation_seed': self.generation_seeds(local_step)[slot],
+                   'has_generated_response': bool(generated[slot]),
+                   'generation_compact_index': int(batch.non_tensor_batch.get('generation_compact_index', np.arange(len(self.tasks)))[slot]),
                    'prompt_tokens': int(batch.batch['attention_mask'][slot, :-batch.batch['responses'].shape[1]].sum()),
                    'response_tokens': int(batch.batch['attention_mask'][slot, -batch.batch['responses'].shape[1]:].sum())}
             self.steps.append(row)
@@ -172,7 +277,8 @@ class RootCollectorObserver:
                 'policy_update': self.update, 'attempts': len(self.last), 'seconds': self.seconds,
                 'collection_complete': complete, 'action_steps': len(self.steps),
                 'prompt_tokens': sum(row['prompt_tokens'] for row in self.steps),
-                'response_tokens': sum(row['response_tokens'] for row in self.steps), **self.compute})
+                'response_tokens': sum(row['response_tokens'] for row in self.steps),
+                'performance': self.performance, **self.compute})
 
     def finish(self):
         for slot in range(self.real_count):
