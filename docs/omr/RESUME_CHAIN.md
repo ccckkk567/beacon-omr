@@ -51,14 +51,25 @@ From the new published, frozen orchestration checkout on the login node, run:
 python3 -I -S -B "$CONTROL/experiments/omr/resume_chain.py" submit \
   --root "$ROOT" --parent-array 166362 \
   --training-revision c193e617acf03d94e18cad023934e65e64ff6923 \
-  --replace-cancelled
+  --replace-cancelled \
+  --confirmed-cancelled-jobs 166364_0,166365_1,166366_2,166367_3,166368_4,166369_5
 ```
 
 This preserves the original `jobs.json` and creates `jobs-replacement.json` in
-the same resume-chain directory. It binds to the six original receipts and
-requires [sacct](https://slurm.schedmd.com/sacct.html) to report all six old jobs
-as CANCELLED before making any new submissions. Missing accounting records or
-another state stop submission; absence from the queue alone is not used here.
+the same resume-chain directory. The first replacement attempt at c7e2f59 stopped
+before any sbatch call because [sacct](https://slurm.schedmd.com/sacct.html)
+returned no old-job records. It did not establish whether submission quota was
+available and did not write a replacement ledger.
+
+The user had already returned successful cancellation and queue-removal output
+for these exact six IDs. The explicit `--confirmed-cancelled-jobs` option records
+that existing evidence, checks the IDs against the original ledger, and queries
+[squeue](https://slurm.schedmd.com/squeue.html) with all states and expanded array
+tasks. Any original ID/array still present, a query failure, or malformed output
+blocks submission. Other jobs, including formal 166362 and smoke 166370, are
+ignored. The ledger distinguishes this evidence from accounting confirmation;
+missing accounting records are never fabricated as CANCELLED. Without the
+explicit prior-cancellation IDs, the original strict sacct check still applies.
 The original parent array and frozen training source are verified as before.
 The same directory lock prevents concurrent submissions of this replacement.
 
@@ -124,7 +135,9 @@ idempotence, uncertain submission handling, wrong parent/source rejection,
 missing/damaged checkpoints, completed-run skipping, outstanding final
 evaluation, and SwanLab sequence/rollback behavior. Five replacement fixtures
 also cover cancellation evidence, preserving the historical ledger, partial
-quota rejection/retry, ambiguous replies and original-receipt binding. All 16
+quota rejection/retry, ambiguous replies and original-receipt binding. Four
+additional fixtures cover the observed empty-accounting regression, exact
+confirmed IDs, active old jobs and failed live queries. All 20
 resume/replacement/monitoring tests passed locally. Real Slurm IDs and resumed
 GPU updates remain evidence to return from the HPC terminal. The Slurm IDs above
 are the cancelled original submissions; replacement IDs and resumed execution

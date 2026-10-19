@@ -59,6 +59,12 @@ Current user overrides to the execution specification:
   explicit --replace-cancelled submission path, preserving jobs.json and writing
   jobs-replacement.json. It verifies the old cancellations and retains any new
   accepted jobs across quota-rejection retries. Replacement IDs are not yet known.
+  The first replacement attempt (controller c7e2f59) stopped before sbatch because
+  sacct returned no old-job records. The user had already supplied successful
+  cancellation/queue-removal output. Use --confirmed-cancelled-jobs with the six
+  exact original IDs and a fresh all-states queue check instead of requiring
+  accounting history. Formal 166362 and smoke 166370 were both still pending in
+  the latest returned queue snapshot.
 
 Frozen experiment: ALFWorld, ScienceWorld, WebShop; baseline/full; seed 0;
 Qwen2.5-1.5B-Instruct; one Slurm node and two H200 per training job. Preserve the

@@ -6,6 +6,7 @@ existing trainer owns checkpoint verification, recovery and SwanLab lineage.
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 from pathlib import Path
@@ -89,8 +90,23 @@ def replacement_jobs(original_ledger, root, training_revision, parent, report):
     return jobs
 
 
-def verify_cancelled(jobs, invoke):
-    """Missing accounting data or any other state is not cancellation evidence."""
+def verify_cancelled(jobs, invoke, confirmed_cancelled=None):
+    """Use accounting, or an explicit prior cancellation receipt plus live absence."""
+    if confirmed_cancelled is not None:
+        # This option records cancellation already reported by the user. Merely
+        # disappearing from the queue is not evidence that a job was cancelled.
+        output = invoke(['squeue', '-h', '-r', '--states=all', '--user=' + getpass.getuser(),
+                         '--format=%F|%i|%T'])
+        original_arrays = {job.split('_')[0] for job in jobs.values()}
+        for line in output.splitlines():
+            fields = [part.strip() for part in line.split('|')]
+            if len(fields) != 3 or not all(fields):
+                raise ValueError('Unrecognized live queue output: ' + line)
+            if fields[0] in original_arrays or fields[1].split('_')[0] in original_arrays:
+                raise RuntimeError('An original continuation is still in the controller queue: ' + line)
+        return {'source': 'user_reported_cancellation_and_live_queue_absence',
+                'confirmed_cancelled_jobs': sorted(confirmed_cancelled),
+                'queue_checked_states': 'all', 'original_jobs_present': []}
     output = invoke(['sacct', '-X', '-n', '-P', '-j', ','.join(jobs.values()),
                      '--format=JobID%40,State%40'])
     observed = {}
@@ -108,12 +124,17 @@ def verify_cancelled(jobs, invoke):
 
 
 def submit_chain(root, training_repo, training_revision, controller_revision, parent,
-                 report, ledger, invoke=command, replaces=None):
+                 report, ledger, invoke=command, replaces=None, confirmed_cancelled=None):
     binding = {'schema': 1, 'parent_array': str(parent), 'root': str(root),
                'training_revision': training_revision, 'controller_revision': controller_revision,
                'controller_repo': str(REPO), 'prepared_report': str(report)}
     if replaces is not None:
         binding['replaces_cancelled_jobs'] = replaces
+    if confirmed_cancelled is not None:
+        if (replaces is None or len(confirmed_cancelled) != 6
+                or set(confirmed_cancelled) != set(replaces.values())):
+            raise ValueError('Confirmed cancellation IDs must exactly match the six original resume receipts')
+        binding['confirmed_cancelled_jobs'] = sorted(confirmed_cancelled)
     if ledger.exists():
         state = json.loads(ledger.read_text())
         if state['binding'] != binding:
@@ -126,7 +147,7 @@ def submit_chain(root, training_repo, training_revision, controller_revision, pa
     if len(state['children']) == 6 and all(row['status'] == 'submitted' for row in state['children'].values()):
         return state  # Idempotent even after the parent disappears from scontrol.
     if replaces is not None:
-        state['cancelled_predecessors'] = verify_cancelled(replaces, invoke)
+        state['cancelled_predecessors'] = verify_cancelled(replaces, invoke, confirmed_cancelled)
     validate_parent(invoke(['scontrol', 'show', 'job', '-o', str(parent)]), parent, root, training_repo)
     for index in range(6):
         if state['children'].get(str(index), {}).get('status') == 'submitted':
@@ -202,11 +223,18 @@ def main():
     parser.add_argument('--index', type=int)
     parser.add_argument('--replace-cancelled', action='store_true',
                         help='Submit one replacement round for the six cancelled jobs in the original ledger')
+    parser.add_argument('--confirmed-cancelled-jobs',
+                        help='Comma-separated original job IDs whose cancellation the user already reported; '
+                             'verify live queue absence instead of requiring sacct history')
     args = parser.parse_args()
     if not re.fullmatch('[0-9a-f]{40}', args.training_revision) or args.parent_array <= 0:
         parser.error('Use a full training revision and a positive parent array ID')
     if args.replace_cancelled and args.mode != 'submit':
         parser.error('--replace-cancelled is only valid for submit')
+    if args.confirmed_cancelled_jobs is not None and not args.replace_cancelled:
+        parser.error('--confirmed-cancelled-jobs requires --replace-cancelled')
+    confirmed_cancelled = (args.confirmed_cancelled_jobs.split(',')
+                           if args.confirmed_cancelled_jobs is not None else None)
     root = Path(args.root).absolute()
     training_repo = root / 'code/beacon-omr-runs' / ('train-' + args.training_revision)
     controller_revision = clean_revision(REPO)
@@ -243,7 +271,8 @@ def main():
             ledger = ledger_dir / 'jobs-replacement.json'
         try:
             state = submit_chain(root, training_repo, args.training_revision, controller_revision,
-                                 args.parent_array, report, ledger, replaces=replaces)
+                                 args.parent_array, report, ledger, replaces=replaces,
+                                 confirmed_cancelled=confirmed_cancelled)
         except RuntimeError as error:
             print(str(error), file=sys.stderr)
             print('Submission record: ' + str(ledger), file=sys.stderr)

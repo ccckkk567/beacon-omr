@@ -33,9 +33,15 @@ not an active continuation chain; do not duplicate the submitted smoke array.
 The user now requests resubmission of the six cancelled continuations. The
 explicit `resume_chain.py submit --replace-cancelled` path preserves the old
 ledger, verifies cancellation records, and records new IDs separately. Definite
-quota rejection can be retried without duplicating accepted jobs. The 16 targeted
-resume/replacement/monitoring tests passed; replacement submission output is
-still pending. Training revision c193e61 and SwanLab recovery remain unchanged.
+quota rejection can be retried without duplicating accepted jobs. The first
+replacement attempt at c7e2f59 stopped before sbatch because sacct returned no
+old-job records; no replacement job was submitted. The user already supplied
+successful cancellation output, so the new explicit confirmed-ID option binds
+that evidence to the original ledger and checks live queue absence across all
+states. All 20 targeted resume/replacement/monitoring tests passed. Replacement
+IDs are still pending. The latest returned queue snapshot shows formal 166362
+and smoke 166370 both pending for Priority. Training revision c193e61 and SwanLab
+recovery remain unchanged.
 
 See `TRAINING.md` for actual submission/resume commands. Each array element uses
 two H200 and trains one benchmark/arm for 150 updates; all six elements may run
