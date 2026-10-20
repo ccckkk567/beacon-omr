@@ -850,3 +850,21 @@ whole-group fallback/quarantine, dynamic event denominators, prefix exclusion,
 full archive/model checkpoint rollback, WebShop history preservation, and native
 worker policy/weight-sync receipt guards. Both training scripts passed Bash syntax
 checks. No Full OMR GPU execution or final experimental result is claimed.
+
+# Requested 72h continuations (2026-10-20)
+
+The user requested one ordinary named continuation per currently running formal
+job: ALFWorld Full167697, ScienceWorld baseline167699 and Full167700. Each requests
+h200p,72h,2H200,32CPU,256GiB, with afterany on its own parent. The controller
+`submit_running_continuations.py` verifies original fullbatch submission receipts
+and live parent identities, journals each accepted ID, and protects quota retries.
+`standalone_continuation.sbatch` checks for a complete same-source checkpoint
+inside the allocation before invoking the unchanged ddae412 trainer in the same
+logical run. No checkpoint means blocked, never a fresh run. Completed update150
+plus final evaluation is skipped. The frozen trainer retains optimizer/cursor/RNG,
+archive and SwanLab resume lineage handling. No parents or other children are
+cancelled, and no further children are created. New submission IDs are pending.
+
+WebShop recovery jobs168005/168006 and ALF baseline child167235_0 were subsequently
+reported queued on h200p. Requested limits are48h/48h/72h respectively; the user's
+last queue listing confirms the partition but does not display those limits.

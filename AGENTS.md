@@ -467,3 +467,14 @@ Frozen code/controller release for this repair is
 2ebc0a7f4d749cee874c94c9b869d830b7dcd344; do not use a later documentation-only
 commit as a different training target. GPU full-hash/native/tokenizer acceptance
 must still return actual evidence; no new HPC jobs have yet been reported.
+
+User returned WebShop recovery submissions baseline168005 and Full168006. Both
+are now confirmed queued on h200p (requested48h); existing ALF baseline child
+167235_0 is also confirmed queued on h200p (requested72h). Keep their identities
+and training sources; do not repeat the WebShop recovery submitter for this change.
+Latest authorization adds exactly one independent h200p/72h continuation each
+for running ALF Full167697, Science baseline167699 and Full167700. Parent source
+stays ddae412, tag fullbatch-20261019; afterany dependency on the matching parent,
+same checkpoint store, strict no-from-zero guard, frozen SwanLab resume policy.
+No cancellation, arrays, new smoke or further continuation chain. The new
+controller may change while training remains frozen. Three new IDs are pending.
