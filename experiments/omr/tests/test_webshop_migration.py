@@ -5,10 +5,11 @@ import os
 from pathlib import Path
 import tempfile
 import subprocess
+import sys
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, open_dict
 
 from experiments.omr.webshop_migration import SOURCES, read_request, check_invariants, check_archive_evidence, authorize
 from experiments.omr.latest_checkpoint import file_sha256
@@ -16,6 +17,28 @@ from experiments.omr.task_manifest import digest
 from experiments.omr.train_entry import compose_config
 
 TARGET = 'b' * 40
+
+
+def initialize_real_dataloader_config(config, revision=None):
+    """Execute the production initialization method, with only data IO stubbed."""
+    repo = Path(__file__).resolve().parents[3]
+    source = (subprocess.check_output(['git', '-C', str(repo), 'show',
+              revision + ':verl/trainer/ppo/ray_trainer.py'], text=True, encoding='utf-8')
+              if revision else (repo / 'verl/trainer/ppo/ray_trainer.py').read_text(encoding='utf-8'))
+    cls = next(n for n in ast.parse(source).body if isinstance(n, ast.ClassDef) and n.name == 'RayPPOTrainer')
+    method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == '_create_dataloader')
+    class Loader:
+        def __init__(self, dataset, batch_size, **kwargs):
+            self.length = len(dataset) // batch_size
+        def __len__(self):
+            return self.length
+    namespace = dict(OmegaConf=OmegaConf, open_dict=open_dict, StatefulDataLoader=Loader)
+    exec(compile(ast.Module([method], type_ignores=[]), '<actual-dataloader-init>', 'exec'), namespace)
+    trainer = SimpleNamespace(config=config)
+    unused = SimpleNamespace(create_rl_dataset=None, create_rl_sampler=None)
+    with patch.dict(sys.modules, {'verl.trainer.main_ppo': unused}):
+        namespace['_create_dataloader'](trainer, range(2400), range(128), lambda x: x, object())
+    return trainer
 
 
 class MigrationTests(unittest.TestCase):
@@ -57,6 +80,25 @@ class MigrationTests(unittest.TestCase):
                 old = namespace['compose_config'](payload)
                 new = compose_config(self.payload(root, method, TARGET, 'new'))
                 self.assertTrue(check_invariants(old, new))
+                before_old, before_new = deepcopy(old), deepcopy(new)
+                initialize_real_dataloader_config(new)
+                self.assertEqual(new.actor_rollout_ref.actor.optim.total_training_steps, 150)
+                self.assertEqual(new.critic.optim.total_training_steps, 150)
+                self.assertTrue(check_invariants(old, new))
+                self.assertEqual(old, before_old)
+                initialized_old = deepcopy(old)
+                initialize_real_dataloader_config(initialized_old, spec['source'])
+                self.assertEqual(check_invariants(old, before_new), check_invariants(initialized_old, new))
+                # No arbitrary scheduler differences may disappear in normalization.
+                for path in ('actor_rollout_ref.actor.optim.total_training_steps',
+                             'critic.optim.total_training_steps',
+                             'trainer.total_training_steps',
+                             'actor_rollout_ref.actor.optim.lr',
+                             'actor_rollout_ref.actor.ppo_mini_batch_size'):
+                    bad = deepcopy(new)
+                    OmegaConf.update(bad, path, 999)
+                    with self.subTest(method=method, path=path), self.assertRaises(ValueError):
+                        check_invariants(old, bad)
 
     def test_request_rejects_other_checkpoint_source_target_arm_and_input_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -117,6 +159,7 @@ class MigrationTests(unittest.TestCase):
             # fixture; production requires the real user-reported hash.
             complete = dict(update=35, files={'actor/model': {}}, metadata=dict(signature=signature,
                 source_commit=state['source_commit'], manifest_sha256=manifest['sha256']))
+            initialize_real_dataloader_config(config)
             trainer = SimpleNamespace(config=config, manifest=manifest, schedule=schedule,
                 run_dir=run, attempt=attempt, signature=digest([config.omr.protocol_signature, manifest['sha256'], schedule]))
             module = SimpleNamespace(compose_config=lambda payload: old_config)
@@ -133,6 +176,7 @@ class MigrationTests(unittest.TestCase):
                 permit = authorize(trainer, state, complete, generation)
                 self.assertEqual(permit['restored_update'], 35)
                 self.assertEqual(permit['source_signature'], signature)
+                self.assertEqual(permit['effective_total_training_steps'], 150)
                 self.assertTrue((attempt / 'migration-permit.json').is_file())
                 broken = deepcopy(state)
                 broken['schedule_sha256'] = 'wrong'

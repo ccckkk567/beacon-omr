@@ -28,6 +28,8 @@ PROTECTED_CODE = ('migpo/core_migpo.py', 'verl/trainer/ppo/core_algos.py',
     'agent_system/environments/prompts/webshop.py')
 PROTECTED_FULL_CODE = tuple('agent_system/milestone_reuse/' + name + '.py' for name in
                            ('archive', 'candidates', 'controller', 'sampler', 'statistics', 'events'))
+SCHEDULE_FIELDS = ('actor_rollout_ref.actor.optim.total_training_steps',
+                   'critic.optim.total_training_steps')
 
 
 def read_request(path, root, method, target):
@@ -49,13 +51,41 @@ def normalized(config):
         omr.pop(key, None)
     omr.setdefault('execution_profile_id', 'perturn-legacy-v1')
     omr.setdefault('writer_profile_id', 'sync-v1')
+    # RayPPOTrainer._create_dataloader fills BOTH optimizer scheduler fields,
+    # including the unused critic, after compose_config. Compare effective
+    # schedules; never drop the fields or allow an arbitrary changed value.
+    total = result['trainer']['total_training_steps']
+    if type(total) is not int or total <= 0:
+        raise ValueError('Migration requires an explicit positive trainer.total_training_steps')
+    for path in SCHEDULE_FIELDS:
+        parts = path.split('.')
+        parent = result
+        for key in parts[:-1]:
+            parent = parent[key]
+        value = parent[parts[-1]]
+        if type(value) is not int or value not in (-1, total):
+            raise ValueError('Unexpected derived scheduler value: ' + path)
+        parent[parts[-1]] = total
     return result
+
+
+def changed_paths(before, after, prefix=''):
+    if isinstance(before, dict) and isinstance(after, dict):
+        paths = []
+        for key in sorted(set(before) | set(after)):
+            path = prefix + '.' + key if prefix else key
+            if key not in before or key not in after:
+                paths.append(path)
+            else:
+                paths.extend(changed_paths(before[key], after[key], path))
+        return paths
+    return [prefix] if before != after else []
 
 
 def check_invariants(old, new):
     before, after = normalized(old), normalized(new)
     if before != after:
-        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        changed = changed_paths(before, after)
         raise ValueError('Unauthorized scientific configuration difference: ' + ', '.join(changed))
     if (after['omr']['benchmark'] != 'webshop' or after['omr']['execution_profile_id'] != 'perturn-legacy-v1'
             or new.omr.get('input_profile_id') != 'webshop-input-v2'):
@@ -159,6 +189,8 @@ def authorize(trainer, state, complete, directory):
         allowed_changes=['verified task/page/history assembly', 'WebShop public input fitting',
                          'audit fields and narrow migration implementation'],
         normalized_invariants_sha256=invariant_sha, protected_code=protected,
+        derived_scheduler_fields=list(SCHEDULE_FIELDS),
+        effective_total_training_steps=config.trainer.total_training_steps,
         source_protocol_sha256=file_sha256(directory / 'protocol.pt'),
         source_data_sha256=file_sha256(directory / 'data.pt'),
         model_files_verified=list(complete['files']), **archive)

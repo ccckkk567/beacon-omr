@@ -478,3 +478,18 @@ stays ddae412, tag fullbatch-20261019; afterany dependency on the matching paren
 same checkpoint store, strict no-from-zero guard, frozen SwanLab resume policy.
 No cancellation, arrays, new smoke or further continuation chain. The new
 controller may change while training remains frozen. Three new IDs are pending.
+
+2026-10-20 returned execution: WebShop recovery168005/168006 both FAILED/1:0,
+before checkpoint restoration, at migration configuration comparison. Latest
+hashes remain the exact baseline35/Full10 values in SOURCES. Local reproduction
+with the actual RayPPOTrainer dataloader initialization shows both optimizer
+total_training_steps placeholders changed from-1 to150, while migration compared
+against freshly composed old configs. Branch codex/webshop-resume-config-20261020
+corrects only that effective-config comparison and leaf-path diagnostics.
+retry_webshop_config.py may retry only those inspected failures after checking
+receipts, terminal states, failed attempt identity, run lock and unchanged latest.
+Use two standalone named testqueue/18h jobs (the user's latest partition choice),
+no cancellation, new children or smoke. Preserve ALF/Science jobs, earlier input
+repair, original checkpoint state, and all audit work in its separate branch.
+Baseline's secondary EBADFD on run-lock close remains an unconfirmed filesystem
+cleanup issue; do not bypass locking. No new HPC submission or resume acceptance yet.

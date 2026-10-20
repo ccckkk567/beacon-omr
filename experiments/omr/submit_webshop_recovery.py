@@ -65,7 +65,7 @@ def verify_source_receipt(root, method):
     return str(path)
 
 
-def checkpoint_metadata(root, method, invoke):
+def checkpoint_metadata(root, method, invoke, *, failed_source=None, failed_attempt=None):
     spec = SOURCES[method]
     verify_source_receipt(root, method)
     run = formal_run_dir(root, 'webshop', method, spec['tag'])
@@ -93,7 +93,9 @@ def checkpoint_metadata(root, method, invoke):
     if attempt.is_symlink() or attempt.parent != run / 'attempts':
         raise ValueError('Failure attempt path differs')
     launch = json.loads((attempt / 'launch.json').read_text())
-    if any(launch.get(k) != v for k, v in dict(source_commit=spec['source'], benchmark='webshop',
+    if failed_attempt is not None and attempt.name != failed_attempt:
+        raise ValueError('Latest failure is not the inspected resume attempt')
+    if any(launch.get(k) != v for k, v in dict(source_commit=failed_source or spec['source'], benchmark='webshop',
             method=method, run_dir=str(run)).items()):
         raise ValueError('Failure launch identity differs')
     return dict(method=method, logical_run_id=run.name, pointer=pointer, generation=str(generation),
