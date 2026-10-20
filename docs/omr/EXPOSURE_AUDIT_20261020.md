@@ -110,3 +110,28 @@ this implementation does not confirm the plan's example counts, conclude that
 low reuse is structural, certify the five native restarts or compare efficacy.
 Review real flags first; fix a specific reproduced data-path bug only if supported.
 Any outer task-sampling redesign remains a separate proposal for user decision.
+
+## CPU startup failure168120 and isolated retry
+
+Returned accounting is FAILED4:0 after2s. srun reports Illegal instruction on
+A386345X1309686C; no AUDIT progress line was printed. No real opportunity/group
+audit was completed. The output also confirms WebShop168005/168006 are now
+testqueue18h, and the ALF/Science continuations remain h200p72h.
+
+The exact binary/library triggering SIGILL is not identified by that log. The
+original launcher invoked the GPU venv interpreter with site startup enabled.
+Orion documents generic and AMD-specific Python3.12.5 builds. The retry chooses
+the documented build from /proc/cpuinfo vendor_id, invokes it with -I -S -B,
+and explicitly appends only the existing site-packages directory to import NumPy
+without processing .pth hooks. It verifies Python3.12 and NumPy origin, prints
+interpreter/NumPy/RandomState/audit stage markers, and disables core dumps for this
+CPU job. It does not install packages or mutate the training venv, GPU checkout,
+checkpoint store or submitted jobs. NumPy RandomState and the frozen audit sources
+remain unchanged. Unsupported CPU/ABI/origin fails explicitly rather than silently
+using another random generator. Real CPU execution remains pending.
+
+Bootstrap regression exercises a separate -I -S process, confirms a poison .pth
+is not executed and report generation completes with explicit absent evidence;
+it uses a startup-only NumPy fixture and is not an ISA or real schedule test.
+References: [Python command-line isolation](https://docs.python.org/3.12/using/cmdline.html),
+[NumPy native-extension troubleshooting](https://numpy.org/doc/stable/user/troubleshooting-importerror.html).

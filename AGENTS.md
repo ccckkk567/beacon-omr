@@ -494,3 +494,11 @@ load model shards or native simulators. CPU output is needed before claiming
 actual E/Q/R/U or improvement. The only confirmed bug so far is the timing-key
 collision; the isolated namespace patch is not a migration or live deployment.
 See docs/omr/EXPOSURE_AUDIT_20261020.md. No new GPU jobs or auto continuation chain.
+
+CPU audit168120 failed4:0 after2s: srun Illegal instruction onA386345X1309686C,
+before the first AUDIT line. This is not an audit result. Retry only the CPU
+audit with vendor-selected documented Python3.12.5[-amd], -I -S startup, existing
+NumPy package without .pth processing, and explicit stage markers. No package
+installation or training environment/job mutation. Exact original SIGILL trigger
+is still unknown; real CPU retry evidence is pending. Latest returned queue
+confirms WebShop168005/168006 testqueue18h and existing continuations h200p72h.
