@@ -493,3 +493,18 @@ no cancellation, new children or smoke. Preserve ALF/Science jobs, earlier input
 repair, original checkpoint state, and all audit work in its separate branch.
 Baseline's secondary EBADFD on run-lock close remains an unconfirmed filesystem
 cleanup issue; do not bypass locking. No new HPC submission or resume acceptance yet.
+
+Latest user override (2026-10-20): abandon WebShop checkpoint migration and
+restart BOTH WebShop arms from the initial model. The user reports cancelling
+the pending Full retry; baseline168529 failed at omr.resume_lineage insertion
+after restoring update35 under bb049a6. Do not retry the old migration commands.
+The user explicitly authorizes deletion of the two old WebShop checkpoint stores
+only, retaining logs, audit records and restore payloads. start_webshop_fresh.py
+checks the exact retry receipt, inactive old job IDs, exclusive old run locks,
+checkpoint ownership and unchanged metadata before deletion. A durable file
+inventory permits interrupted deletion to resume; all deletion paths stay inside
+those two old stores. New ordinary named baseline/full jobs use separate
+input-v2-fresh-20261020 directories, testqueue/18h/2H200/32CPU/256GiB, the existing
+initial model and shared WebShop input-v2 rules, and fresh SwanLab runs. No new
+resume children, arrays or smoke; protect ALFWorld/ScienceWorld and their jobs.
+Seven local CPU tests passed. Remote deletion and new submission remain pending.
