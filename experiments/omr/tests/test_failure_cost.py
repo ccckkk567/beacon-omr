@@ -31,7 +31,7 @@ class FailureCostTests(unittest.TestCase):
             self.assertEqual(costs['cost/train/generation_padding_requests'], 1)
             self.assertEqual(costs['cost/train/action_steps'], 0)
             self.assertEqual(costs['cost/train/discarded_technical_steps'], 1)
-            self.assertEqual(costs['perf/train/generation_rpc_wall_s_inclusive'], 2.)
+            self.assertEqual(costs['perf/cumulative/train/generation_rpc_wall_s_inclusive'], 2.)
             self.assertEqual(len(list((root / 'attempt').glob('*-error.json'))), 1)
 
 

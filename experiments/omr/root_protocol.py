@@ -192,8 +192,8 @@ class RootCollectorObserver:
             atomic_json(path.with_name(path.stem + '-flush-error.json'), {'error': repr(flush_error)})
 
     def performance_metrics(self):
-        prefix = 'train' if self.split == 'train' else 'eval'
-        result = {f'perf/{prefix}/{key}': value for key, value in self.performance.items()}
+        from .performance_metrics import round_performance
+        result = round_performance(self.performance, self.split)
         result.update({f'rollout/{key}': value for key, value in self.compute.items()
                        if key.endswith('requests') or key == 'done_requests_avoided'})
         result['rollout/active_request_fraction'] = self.compute.get('active_requests', 0) / max(1, self.compute['model_action_slots'])
@@ -373,7 +373,7 @@ def split_cost(run_dir):
             name = f'cost/{split}/{key}'
             result[name] = result.get(name, 0) + row.get(key, 0)
         for key, value in row.get('performance', {}).items():
-            name = f'perf/{split}/{key}'
+            name = f'perf/cumulative/{split}/{key}'
             result[name] = result.get(name, 0.) + value
     for path in (Path(run_dir) / 'attempts').glob('*/allocation.json'):
         row = json.loads(path.read_text())

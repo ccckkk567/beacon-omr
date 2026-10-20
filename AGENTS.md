@@ -478,3 +478,19 @@ stays ddae412, tag fullbatch-20261019; afterany dependency on the matching paren
 same checkpoint store, strict no-from-zero guard, frozen SwanLab resume policy.
 No cancellation, arrays, new smoke or further continuation chain. The new
 controller may change while training remains frozen. Three new IDs are pending.
+
+User returned the three accepted continuations: ALF Full168028<-167697,
+Science baseline168029<-167699, Full168030<-167700, each h200p72h. ALF baseline
+child167235_0 remains separate. WebShop168005/168006 were requested back to
+testqueue18h; no returned confirmation of that final partition/time update yet.
+
+Latest user request applies OMR_Next_Steps_Audit_First_20261020.md. Work on the
+independent codex/omr-exposure-audit-20261020 branch/worktree, based on6500b4f
+so the verified WebShop fix is retained. Preserve all active and queued training;
+no sampler/schedule/identity/reward/L/D/archive-capacity/full-batch/engine changes.
+Read actual immutable metadata/rollouts/optimization/evaluation on CPU, using
+frozen source task schedule/RandomState and independent sampler replay. Do not
+load model shards or native simulators. CPU output is needed before claiming
+actual E/Q/R/U or improvement. The only confirmed bug so far is the timing-key
+collision; the isolated namespace patch is not a migration or live deployment.
+See docs/omr/EXPOSURE_AUDIT_20261020.md. No new GPU jobs or auto continuation chain.

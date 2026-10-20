@@ -165,8 +165,9 @@ class ProtocolTrainer(RayPPOTrainer):
     def _validate(self):
         cached = getattr(self, 'cached_final_metrics', None)
         if self.global_steps >= self.total_training_steps and cached is not None:
+            from .performance_metrics import without_cached_round
             self.final_test_done = True
-            return dict(cached, **{'cost/cumulative_' + key: value for key, value in self.cost.items()})
+            return dict(without_cached_round(cached), **{'cost/cumulative_' + key: value for key, value in self.cost.items()})
         metrics = self._evaluate_manifest('validation', [0])
         if self.global_steps >= self.total_training_steps and not self.final_test_done:
             metrics.update(self._evaluate_manifest('test', [0, 1, 2]))
@@ -181,6 +182,7 @@ class ProtocolTrainer(RayPPOTrainer):
         self._protocol_phase('root_validation' if split == 'validation' else 'final_test')
         from verl.utils.dataset.rl_dataset import collate_fn
         rows = []
+        round_performance = {}
         pool = self.manifest['splits'][split]
         for seed in seeds:
             for start in range(0, len(pool), 16):
@@ -197,6 +199,8 @@ class ProtocolTrainer(RayPPOTrainer):
                     do_sample=True, validate=True)
                 self.traj_collector.multi_turn_loop(batch, self.actor_rollout_wg, self.val_envs, is_train=False)
                 rows.extend(self.eval_observer.summary)
+                for key, value in self.eval_observer.performance.items():
+                    round_performance[key] = round_performance.get(key, 0.) + value
                 for key, value in self.eval_observer.compute.items():
                     self.cost[key] = self.cost.get(key, 0) + value
         self.cost['eval_attempts'] += len(rows)
@@ -204,6 +208,8 @@ class ProtocolTrainer(RayPPOTrainer):
         metrics = summarize(rows, prefix)
         from .root_protocol import split_cost
         metrics.update(split_cost(self.run_dir))
+        from .performance_metrics import round_performance as timing_metrics
+        metrics.update(timing_metrics(round_performance, split))
         dump_records(self.attempt / 'evaluation' / f'{split}-u{self.global_steps:06d}.jsonl.gz', rows)
         return metrics
 
