@@ -2,7 +2,9 @@
 
 Scope: the user-approved `WebShop_故障核验与修复续训方案_20261020.md`.
 Branch: `codex/webshop-input-resume-fix-20261020`, based on full-batch branch
-`07429fb`. The deployment SHA is bound by the submitted requests and receipts.
+`07429fb`. Training/controller release: `2ebc0a7f4d749cee874c94c9b869d830b7dcd344`.
+Later documentation commits do not migrate the frozen target. The deployment
+SHA is bound by the submitted requests and receipts.
 Public code/operational-metadata synchronization was explicitly authorized.
 
 ## Returned evidence and current operational boundary
@@ -156,3 +158,31 @@ training receipts. Await the two formal allocations' acceptance, then at least
 Baseline crossing the real input case, Full producing a restart collection and
 optimizer update, and subsequent ordinary latest checkpoints. Do not substitute
 fixture success or a failed-health step for those results.
+
+## File-level change index
+
+Paths below are relative to the repository root.
+
+| File | Change |
+| --- | --- |
+| `agent_system/environments/webshop_input.py` | Shared task/page/history assembly, actual-token budget and public-body-only trimming |
+| `agent_system/environments/env_manager.py` | Dispatch the explicit v2 WebShop profile; expose fitted-input audits |
+| `agent_system/environments/env_package/webshop/restart.py` | Export verified native instruction and reuse the shared restore installer |
+| `agent_system/milestone_reuse/native_restart.py` | Route WebShop restoration through that installer; preserve other native routes |
+| `agent_system/multi_turn_rollout/rollout_loop.py` | Attach current input audits to the observer before the existing generation call |
+| `experiments/omr/full_protocol.py` | Bind tokenizer, distinguish budget errors from bad checkpoints, retain candidate input-profile metadata |
+| `experiments/omr/root_protocol.py` | Add input-profile and fitting evidence to existing generation/step records |
+| `experiments/omr/train_entry.py` | Select/validate the WebShop input profile and pass the exact migration request |
+| `experiments/omr/launch_training.py` | Read historical bindings without rewriting them; declare the new attempt's actual source/profile |
+| `experiments/omr/train.sbatch` | Pass the optional WebShop-only migration request; keep resource/engine setup |
+| `experiments/omr/training.py` | Strict migration hook, full native state/cursor/RNG loading, linked SwanLab segment and in-allocation real acceptance |
+| `experiments/omr/webshop_migration.py` | Exact known-source/checkpoint authorization, invariant/signature/code and archive-evidence checks |
+| `experiments/omr/webshop_acceptance.py` | Finite replay of real failed prefixes/payloads; no policy/optimizer/statistics samples |
+| `experiments/omr/submit_webshop_recovery.py` | Verify/retire the one held child, submit two journaled normal continuations |
+| `experiments/omr/tests/test_webshop_input.py` | Input-budget/identity/mixed-slot boundary fixtures |
+| `experiments/omr/tests/test_webshop_migration.py` | Source composer comparison and negative migration gates |
+| `experiments/omr/tests/test_webshop_recovery_cases.py` | Production replay/input acceptance with controlled world/transport/tokenizer fixtures |
+| `experiments/omr/tests/test_webshop_recovery_submission.py` | Exact job scope, checkpoint metadata and quota retry fixtures |
+| `experiments/omr/tests/test_full_protocol.py` | Explicitly retain legacy input profile in historical fixtures |
+| `experiments/omr/tests/test_restart.py` | Supply the native public instruction in the existing restore fixture |
+| `AGENTS.md`, `docs/omr/STATUS.md`, this report | Record authorization, evidence boundaries, frozen source and pending native/job results |

@@ -463,3 +463,7 @@ cursor/RNG/OMR state and create linked new SwanLab segments. Actual failed-input
 and native restart acceptance run inside formal allocations before training
 advances; unresolved real cases fail closed. See docs/omr/WEBSHOP_INPUT_RESUME_20261020.md.
 Local tests passed; new IDs, real-case/GPU/update/checkpoint receipts are pending.
+Frozen code/controller release for this repair is
+2ebc0a7f4d749cee874c94c9b869d830b7dcd344; do not use a later documentation-only
+commit as a different training target. GPU full-hash/native/tokenizer acceptance
+must still return actual evidence; no new HPC jobs have yet been reported.
