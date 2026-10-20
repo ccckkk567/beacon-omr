@@ -22,6 +22,11 @@ fi
 case "$BENCH" in alfworld|webshop|scienceworld) ;; *) exit 2 ;; esac
 case "$METHOD" in baseline|full) ;; *) exit 2 ;; esac
 ATTEMPT_SLOT="${SLURM_ARRAY_TASK_ID:-single}"
+MIGRATION_ARGS=()
+if [ -n "${8:-}" ]; then
+  test "$BENCH" = webshop
+  MIGRATION_ARGS=(--migration-request "$8")
+fi
 test "$(git -C "$REPO" rev-parse HEAD)" = "$REV"
 test -z "$(git -C "$REPO" status --porcelain)"
 export PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1
@@ -34,7 +39,7 @@ trap 'mkdir -p "$ATTEMPT"; touch "$ATTEMPT/STOP"' USR1
 cd "$REPO"
 srun --ntasks=1 --kill-on-bad-exit=1 python3 -I -S -B \
   "$REPO/experiments/omr/launch_training.py" --root "$ROOT" \
-  --prepared-report "$PREVIOUS" --benchmark "$BENCH" --method "$METHOD" --run-tag "$RUN_TAG" &
+  --prepared-report "$PREVIOUS" --benchmark "$BENCH" --method "$METHOD" --run-tag "$RUN_TAG" "${MIGRATION_ARGS[@]}" &
 CHILD=$!
 # A signal interrupts wait; continue waiting for this owned training process.
 set +e

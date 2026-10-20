@@ -1,5 +1,15 @@
 # Execution status — 2026-10-19
 
+## WebShop repair/continuation — 2026-10-20
+
+See [WebShop repair report](WEBSHOP_INPUT_RESUME_20261020.md). User authorized the
+input/restart fixes and controlled continuation of Baseline latest35 and Full
+latest10, retaining all training state. Original parents 167237_1/167698 FAILED.
+Old WebShop child167238_1 is confirmed user-held; the scoped submitter may retire
+it and submit two named formal continuations only. Other environments and
+ALF child167235_0 remain protected. Real checkpoint/native/tokenizer acceptance
+runs in those formal allocations; no new IDs or GPU acceptance yet returned.
+
 ## Current full-batch release
 
 See [full-batch release report](FULL_BATCH_ROLLBACK_20261019.md). User-returned

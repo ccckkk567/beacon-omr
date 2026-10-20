@@ -198,6 +198,9 @@ def render_starts(manager, benchmark, packets, *, update_vector_state=True):
     raw = [packet['observation'] for packet in packets]
     infos = [deepcopy(packet['info']) for packet in packets]
     states = [packet['manager'] for packet in packets]
+    if benchmark == 'webshop':
+        from agent_system.environments.webshop_input import install_starts
+        return install_starts(manager, raw, infos, states)
     manager.memory.reset(len(packets))
     if benchmark == 'alfworld':
         manager.tasks = []
@@ -214,9 +217,6 @@ def render_starts(manager, benchmark, packets, *, update_vector_state=True):
         for info, task in zip(infos, manager.tasks):
             info['task_description'] = task
         formatted, arguments = raw, infos
-    else:
-        manager.tasks = manager.extract_task(raw)
-        formatted, arguments = manager.format_obs(raw), infos
     manager.pre_text_obs = formatted
     for slot, state in enumerate(states):
         if state is None:

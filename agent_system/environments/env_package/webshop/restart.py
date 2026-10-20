@@ -96,6 +96,7 @@ class WebshopRestartAdapter:
             raise RestoreMismatch('Loaded goal differs from requested task')
         self.worker.restart_adapter = self
         self.trace, self.done = [], False
+        self.instruction_text = self.worker.env.unwrapped.instruction_text
         self.root_rng = self.world_rng = random.getstate()
         self.observation, self.info = obs, deepcopy(info)
         self.root_signature = content_id(witness(self.worker, obs, info))
@@ -103,6 +104,7 @@ class WebshopRestartAdapter:
 
     def receipt(self, info, mode, replay_actions, seconds, horizon=None):
         result = deepcopy(info)
+        result['omr_instruction_text'] = self.instruction_text
         # Restoring an achieved detector state is not a new reward boundary.
         result['milestone_achieved'] = False
         phase = self.worker.milestone_detector.phase
@@ -182,28 +184,9 @@ def capture_manager_slot(manager, index, rendered_observation):
 
 def restore_manager_slots(manager, observations, infos):
     """Bind native verified receipts to actual prompt history, before generation."""
-    manager.tasks = manager.extract_task(observations)
-    formatted = manager.format_obs(observations)
-    manager.pre_text_obs = formatted
-    manager.memory.reset(len(observations))
-    init_flags = []
-    for index, info in enumerate(infos):
-        state = info.get('omr_manager_state')
-        init_flags.append(state is None)
-        if state is None:
-            continue
-        if (state['task_text'] != manager.tasks[index] or state['pre_text_obs'] != formatted[index]
-                or state['history_length'] != manager.config.env.history_length):
-            raise RestoreMismatch('Restored manager context differs from the native task/observation/profile')
-        manager.memory._data[index] = deepcopy(state['memory'])
-    if any(manager.memory._data):
-        manager.memory.keys = ['text_obs', 'action']
-    # A batch can contain root and restart groups. Render both through the same
-    # baseline formatter, then choose per slot without changing history_length.
-    roots = manager.build_text_obs(formatted, infos, init=True)
-    continued = manager.build_text_obs(formatted, infos, init=False)
-    rendered = [roots[i] if init_flags[i] else continued[i] for i in range(len(infos))]
-    for index, info in enumerate(infos):
-        if not init_flags[index] and rendered[index] != info['omr_manager_state']['rendered_observation']:
-            raise RestoreMismatch('Restored policy input differs from the captured input')
-    return {'text': rendered, 'image': None, 'anchor': formatted.copy()}
+    from agent_system.environments.webshop_input import install_starts
+    try:
+        result, _ = install_starts(manager, observations, infos)
+        return result
+    except ValueError as error:
+        raise RestoreMismatch(str(error)) from error

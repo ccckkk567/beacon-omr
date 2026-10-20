@@ -166,7 +166,8 @@ class RestartTests(unittest.TestCase):
         exec(compile(ast.fix_missing_locations(module), '<native-manager>', 'exec'), ns)
         manager = ns['WebshopEnvironmentManager'](None, None, SimpleNamespace(env=SimpleNamespace(history_length=2)))
         obs = 'WebShop [SEP] Instruction: [SEP] buy blue [SEP] result'
-        info = {'available_actions': {'has_search_bar': False, 'clickables': ['blue']}}
+        info = {'available_actions': {'has_search_bar': False, 'clickables': ['blue']},
+                'omr_instruction_text': 'buy blue'}
         restart.restore_manager_slots(manager, [obs], [info])
         manager.memory.store({'text_obs': ['old'], 'action': ['search[blue]']})
         rendered = manager.build_text_obs(manager.pre_text_obs, [info])[0]

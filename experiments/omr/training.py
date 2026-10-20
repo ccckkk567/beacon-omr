@@ -46,6 +46,9 @@ class ProtocolTrainer(RayPPOTrainer):
         super().__init__(*args, **kwargs)
         self.run_dir = Path(self.config.omr.run_dir)
         self.attempt = Path(self.config.omr.attempt_dir)
+        if self.config.omr.benchmark == 'webshop':
+            for manager in (self.envs, self.val_envs):
+                manager.omr_tokenizer = self.tokenizer
         startup_stage('manifest.build_catalog')
         self.manifest = build_catalog(self.config.omr.benchmark, self.envs.envs, self.val_envs.envs)
         path = Path(self.config.omr.manifest_path)
@@ -127,6 +130,9 @@ class ProtocolTrainer(RayPPOTrainer):
         metrics.update(split_cost(self.run_dir))
         metrics.update(self.train_observer.performance_metrics())
         metrics.update({'health/policy_updates_committed': self.global_steps,
+                        'health/completed_policy_update': self.global_steps,
+                        'health/checkpointed_update': self.last_saved,
+                        'health/attempted_update': self.global_steps,
                         'health/first_update_completed': int(self.global_steps >= 1),
                         'health/fatal_count': 0, 'health/identity_missing_count': 0,
                         'health/identity_mismatch_count': 0, 'health/identity_bound_fallback_count': 0,
@@ -219,6 +225,8 @@ class ProtocolTrainer(RayPPOTrainer):
                  'python_rng': random.getstate(), 'numpy_rng': np.random.get_state(),
                  'torch_rng': torch.get_rng_state(), 'monitor': None if swan is None else swan.status,
                  'attempt': str(self.attempt), 'generation_rng': 'request seeds derived from frozen task/update/slot/step'}
+        if self.config.omr.get('input_profile_id'):
+            state['input_profile_id'] = self.config.omr.input_profile_id
         observer = getattr(self, 'train_observer', None)
         if observer is not None and hasattr(observer, 'state_dict'):
             state['archive_enabled'] = True
@@ -259,11 +267,18 @@ class ProtocolTrainer(RayPPOTrainer):
         from omegaconf import open_dict
         from .monitoring import resume_policy
         if not (self.checkpoints.root / 'latest.json').exists():
+            if self.config.omr.get('migration_request'):
+                raise ValueError('Authorized migration requires its existing complete checkpoint; refusing update zero')
             return
-        directory, complete = self.checkpoints.recover()
+        migration_request = self.config.omr.get('migration_request')
+        directory, complete = (self.checkpoints.latest() if migration_request else self.checkpoints.recover())
         state = torch.load(directory / 'protocol.pt', map_location='cpu', weights_only=False)
+        migration = None
         if state['signature'] != self.signature or state['task_cursor'] != complete['update']:
-            raise ValueError('Checkpoint protocol/manifest/task cursor mismatch')
+            if not migration_request:
+                raise ValueError('Checkpoint protocol/manifest/task cursor mismatch')
+            from .webshop_migration import authorize
+            migration = authorize(self, state, complete, directory)
         observer = getattr(self, 'train_observer', None)
         archive_enabled = observer is not None and hasattr(observer, 'load_state_dict')
         if bool(state['archive_enabled']) != archive_enabled:
@@ -284,7 +299,13 @@ class ProtocolTrainer(RayPPOTrainer):
                 if not path.resolve().is_relative_to(self.run_dir.resolve()) or file_sha256(path) != chunk['sha256']:
                     raise ValueError('Immutable scientific chunk changed since checkpoint')
         self.actor_rollout_wg.load_checkpoint(str(directory / 'actor'), del_local_after_load=False)
-        self.train_dataloader.load_state_dict(torch.load(directory / 'data.pt', weights_only=False))
+        saved_data_state = torch.load(directory / 'data.pt', weights_only=False)
+        self.train_dataloader.load_state_dict(saved_data_state)
+        from .webshop_migration import cursor_fields
+        saved_cursors = cursor_fields(saved_data_state)
+        loaded_cursors = cursor_fields(self.train_dataloader.state_dict())
+        if saved_cursors and any(loaded_cursors.get(k) != v for k, v in saved_cursors.items()):
+            raise ValueError('Loaded data cursor differs from checkpoint')
         self.global_steps = self.last_saved = state['update']
         self.current_epoch = state['epoch']
         self.cost = accumulated_cost(self.run_dir)
@@ -298,18 +319,44 @@ class ProtocolTrainer(RayPPOTrainer):
         random.setstate(state['python_rng'])
         np.random.set_state(state['numpy_rng'])
         torch.set_rng_state(state['torch_rng'])
+        atomic_json(self.attempt / 'restored-state.json', {
+            'completed_policy_update': self.global_steps, 'checkpointed_update': self.last_saved,
+            'next_update': self.global_steps + 1, 'source_checkpoint': str(directory),
+            'data_state_sha256': file_sha256(directory / 'data.pt'),
+            'saved_data_cursors': saved_cursors, 'loaded_data_cursors': loaded_cursors,
+            'python_rng_restored': random.getstate() == state['python_rng'],
+            'torch_rng_restored': torch.equal(torch.get_rng_state(), state['torch_rng']),
+            'numpy_rng_restored': bool(np.array_equal(np.random.get_state()[1], state['numpy_rng'][1])),
+            'optimizer_scheduler_rank_files_verified': True,
+            'archive_entries': len(observer.controller.archive.entries) if archive_enabled else 0,
+            'controller_committed_update': observer.controller.committed_update if archive_enabled else None,
+            'migration_permit': str(self.attempt / 'migration-permit.json') if migration else None})
         previous = state['monitor'] or {}
         status_path = Path(state['attempt']) / 'swanlab' / 'omr-transport.json'
         if status_path.is_file():
             previous = json.loads(status_path.read_text())
         policy = resume_policy(self.global_steps, previous.get('last_logged_update', -1),
                                previous.get('run_id'), offline=previous.get('mode') != 'online')
+        if migration:
+            policy = {'resume': 'never', 'id': None, 'reason': 'webshop_input_profile_change',
+                'resume_parent_id': previous.get('run_id'), 'resume_from_update': self.global_steps,
+                'old_branch_uncheckpointed_updates': [36, 37, 38, 39] if self.config.omr.method == 'baseline' else [],
+                'migration_permit': str(self.attempt / 'migration-permit.json')}
+            self.config.omr.resume_lineage = dict(parent_run_id=previous.get('run_id'),
+                parent_attempt=state['attempt'], restored_update=self.global_steps,
+                input_profile_id=self.config.omr.input_profile_id,
+                old_branch_uncheckpointed_updates=policy['old_branch_uncheckpointed_updates'])
         with open_dict(self.config.omr.tracking):
             self.config.omr.tracking.resume = policy['resume']
             self.config.omr.tracking.id = policy['id']
             self.config.omr.tracking.initial_log_sequence = previous.get('last_log_sequence', -1) if policy['id'] else -1
         atomic_json(self.attempt / 'resume-lineage.json', dict(policy, checkpoint=str(directory),
                     previous_attempt=state['attempt'], cost_watermark=self.cost))
+        if migration:
+            from .webshop_acceptance import check_in_allocation
+            acceptance = check_in_allocation(self, state)
+            if acceptance['status'] != 'passed':
+                raise RuntimeError('WebShop real-case acceptance did not pass; training has not advanced')
 
     def fit(self):
         try:

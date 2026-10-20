@@ -26,6 +26,10 @@ def compose_config(payload):
     if execution not in ('perturn-legacy-v1', 'perturn-active-v1') or writer not in ('sync-v1', 'bounded-v1'):
         raise ValueError('Unknown execution/writer profile')
     config.omr.update({'execution_profile_id': execution, 'writer_profile_id': writer})
+    if payload['benchmark'] == 'webshop':
+        config.omr.input_profile_id = payload.get('input_profile_id', 'webshop-input-v2')
+        if config.omr.input_profile_id not in ('webshop-input-v1', 'webshop-input-v2'):
+            raise ValueError('Unknown WebShop input profile')
     protocol_signature = digest([OmegaConf.to_container(config, resolve=True), payload['model'],
                                  payload['source_commit'], 'omr-protocol-v2'])
     config.actor_rollout_ref.model.path = payload['model']['path']
@@ -53,6 +57,8 @@ def compose_config(payload):
     for key in ('parent_failed_run', 'parent_attempt'):
         if key in payload:
             config.omr[key] = payload[key]
+    if payload.get('migration_request'):
+        config.omr.migration_request = payload['migration_request']
     OmegaConf.resolve(config)
     return config
 

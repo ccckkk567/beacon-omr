@@ -349,6 +349,7 @@ class TrajectoryCollector:
             indices = np.flatnonzero(active_masks) if compact else np.arange(batch_size)
             if observer is not None:
                 observer.active_at_generation = active_masks.copy()
+                observer.input_at_generation = obs.get('input_audit')
             batch = generate_turn(self, gen_batch, obs, indices,
                 observer.generation_seeds(_step) if observer is not None else None,
                 actor_rollout_wg, observer, _step)

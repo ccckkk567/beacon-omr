@@ -403,6 +403,8 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
                         }
         self.pre_text_obs = obs
         self.memory.reset(batch_size = len(infos))
+        if hasattr(self, 'omr_input_audit'):
+            observations['input_audit'] = self.omr_input_audit
         return observations, infos
 
     def step(self, text_actions: List[str]):
@@ -419,6 +421,8 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
             'image': None,
             'anchor': next_obs.copy()
         }
+        if hasattr(self, 'omr_input_audit'):
+            next_observations['input_audit'] = self.omr_input_audit
         # add action_valid to infos
         for i, info in enumerate(infos):
             info['is_action_valid'] = to_numpy(valids[i])
@@ -470,6 +474,9 @@ class WebshopEnvironmentManager(EnvironmentManagerBase):
         """
         This function builds the text observation for the agent.
         """
+        if getattr(getattr(self.config, 'omr', None), 'input_profile_id', None) == 'webshop-input-v2':
+            from agent_system.environments.webshop_input import assemble_inputs
+            return assemble_inputs(self, text_obs, infos, init=init)
         postprocess_text_obs = []
         if not init and self.config.env.history_length > 0:
             memory_contexts, valid_lens = self.memory.fetch(

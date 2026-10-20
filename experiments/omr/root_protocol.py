@@ -151,6 +151,9 @@ class RootCollectorObserver:
             prompt_tokens=prompt_tokens, response_tokens=response_tokens,
             preprocess_wall_s=preprocess_wall, generation_rpc_wall_s_inclusive=generation_wall,
             **counts)
+        if getattr(self.config.omr, 'input_profile_id', None):
+            row['input_profile_id'] = self.config.omr.input_profile_id
+            row['input_audit'] = getattr(self, 'input_at_generation', None)
         # Immutable generation audit precedes environment execution, including
         # generated tokens whose subsequent environment/receipt call fails.
         dump_records(self.directory / (self.collection_id + f'-generation-{local_step:03d}.jsonl.gz'),
@@ -268,6 +271,8 @@ class RootCollectorObserver:
                    'prompt_tokens': int(batch.batch['attention_mask'][slot, :-batch.batch['responses'].shape[1]].sum()),
                    'response_tokens': int(batch.batch['attention_mask'][slot, -batch.batch['responses'].shape[1]:].sum())}
             self.steps.append(row)
+            if observations.get('input_audit') is not None:
+                row['input_audit'] = observations['input_audit'][slot]
             for key in ('omr_synced_policy_version', 'omr_weight_sync_sequence'):
                 if key in batch.non_tensor_batch:
                     row[key] = int(batch.non_tensor_batch[key][slot])

@@ -21,6 +21,8 @@ from .root_protocol import RootCollectorObserver, dump_records
 class FullCollectorObserver(RootCollectorObserver):
     def __init__(self, config, manager, manifest, directory, tokenizer):
         super().__init__(config, manager, manifest, directory)
+        if config.omr.benchmark == 'webshop':
+            manager.omr_tokenizer = tokenizer
         c = config.omr
         self.controller = ReuseController(
             Archive(c.archive.max_entries_total, c.archive.max_entries_per_task,
@@ -93,6 +95,9 @@ class FullCollectorObserver(RootCollectorObserver):
                 try:
                     self._group_render(attempted)
                 except ValueError as problem:
+                    from agent_system.environments.webshop_input import WebshopInputBudgetError
+                    if isinstance(problem, WebshopInputBudgetError):
+                        raise
                     error = str(problem)
             cost_rows = list(attempted)
             if error is not None:
@@ -168,6 +173,8 @@ class FullCollectorObserver(RootCollectorObserver):
             manager_state = {'task_text': self.manager.tasks[slot],
                 'pre_text_obs': self.manager.pre_text_obs[slot], 'memory': deepcopy(self.manager.memory[slot]),
                 'rendered_observation': text, 'history_length': self.config.env.history_length}
+            if self.benchmark == 'webshop':
+                manager_state['input_profile_id'] = getattr(self.config.omr, 'input_profile_id', 'webshop-input-v1')
             candidate['entry_fields'] = trace.candidate(category, next_observations['anchor'][slot], info)
             candidate.update(exact_key=content_id([task_key, category,
                 candidate['entry_fields']['condition_signature'], manager_state]),

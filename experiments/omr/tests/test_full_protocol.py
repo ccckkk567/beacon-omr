@@ -75,7 +75,7 @@ def config_for(root, benchmark='scienceworld', method='full'):
     config = compose_config({'benchmark': benchmark, 'method': method, 'source_commit': 'a' * 40,
         'model': {'path': '/existing/model'}, 'run_id': benchmark + method, 'run_dir': str(root),
         'attempt_dir': str(root / 'attempt'), 'root': str(root), 'simulator_python': None,
-        'webshop': {'paths': {}}})
+        'webshop': {'paths': {}}, 'input_profile_id': 'webshop-input-v1'})
     config.env.rollout.n = 2
     config.env.max_steps = 2
     config.omr.restart_fraction = 1.

@@ -444,3 +444,22 @@ use training ddae412e6195d2f86dace7f5ce2630d155ac0c01, controller
 analysis/beacon-omr/training-submissions/fullbatch-20261019. Preserve these
 accepted jobs and both old baselines/children; do not resubmit or migrate to a
 documentation commit. Queue/GPU/update/checkpoint execution evidence is pending.
+
+Latest 2026-10-20 user plan: WebShop input reconstruction/length repair and narrow
+checkpoint continuation, branch codex/webshop-input-resume-fix-20261020. Preserve
+Baseline source 98d7a69 latest35 (old optimizer logs reached39) and Full ddae412
+latest10. Returned sacct confirms parents 167237_1/167698 FAILED 1:0. The user
+executed guarded hold of only old WebShop child 167238_1; it is confirmed PENDING,
+Priority=0, JobHeldUser, expected controller 1d30ff3. ALF child167235_0 and all
+ALF/Science jobs stay protected. The plan authorizes retiring that exact held
+child and two standalone named WebShop formal continuations, no extra children
+or smoke. Reuse each same logical run/latest store; no from-zero restart, old
+payload rewriting, arbitrary signature bypass, environment reinstall or extra
+model copies. Full-batch/per-turn engine path and B16/G8/H15/7000/512 stay fixed.
+Shared webshop-input-v2 fitting preserves native instructions/actions and trims
+only public page body if no-history fallback cannot fit. Narrow migration must
+verify source signatures/config/assets/checkpoint hashes, restore all optimizer,
+cursor/RNG/OMR state and create linked new SwanLab segments. Actual failed-input
+and native restart acceptance run inside formal allocations before training
+advances; unresolved real cases fail closed. See docs/omr/WEBSHOP_INPUT_RESUME_20261020.md.
+Local tests passed; new IDs, real-case/GPU/update/checkpoint receipts are pending.
