@@ -1,0 +1,14 @@
+# Only new, isolated Demo10 runs load this profile. Learner/env settings inherit
+# the common and benchmark profiles, including B16/G8 and horizons30/30/15.
+omr:
+  demo_profile_id: demo10-active-reuse-v1
+  subset_profile_id: omr-demo10-v1
+  task_planner_profile_id: fixed-eight-active-tasks-v1
+  root_groups: 8
+  archive_groups: 8
+trainer:
+  project_name: beacon-omr-demo10
+  total_training_steps: 150
+  save_freq: 5
+  test_freq: 15
+  val_before_train: true

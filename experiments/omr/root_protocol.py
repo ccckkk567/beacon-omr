@@ -86,6 +86,10 @@ class RootCollectorObserver:
         self.counter = 0
 
     def plan(self, tasks, *, update, split, generation_seed=0, real_count=None):
+        if getattr(self.config.omr, 'demo', None) and split == 'train':
+            allowed = {t['id']: t for t in self.manifest['splits']['train']}
+            if any(allowed.get(t['id']) != t for t in tasks):
+                raise ValueError('Training task escaped frozen demo membership')
         self.tasks = [dict(task, root_seed=seed_for('root', task['id'])) for task in tasks]
         self.manager.envs.omr_tasks = self.tasks
         self.manager.envs._omr_terminal = {}

@@ -16,11 +16,21 @@ def compose_config(payload):
     repo = Path(__file__).resolve().parents[2]
     profiles = repo / 'experiments/omr/configs'
     method = payload.get('method', 'baseline')
-    if method not in ('baseline', 'full'):
+    if method not in ('baseline', 'full', 'active_full'):
         raise ValueError('Unsupported experiment arm')
     config = OmegaConf.merge(OmegaConf.load(repo / 'verl/trainer/config/ppo_trainer.yaml'),
         OmegaConf.load(profiles / 'common.yaml'), OmegaConf.load(profiles / (payload['benchmark'] + '.yaml')),
-        OmegaConf.load(profiles / (method + '.yaml')))
+        OmegaConf.load(profiles / (('full' if method == 'active_full' else method) + '.yaml')))
+    if payload.get('demo'):
+        config = OmegaConf.merge(config, OmegaConf.load(profiles / 'demo10_active_v1.yaml'))
+        config.omr.demo = payload['demo']
+        config.omr.update({'parent_manifest_path': str(Path(payload['demo']['directory'])/'parent_manifest.json'),
+            'demo_manifest_path': str(Path(payload['demo']['directory'])/'demo_manifest.json'),
+            'demo_sha256': payload['demo']['demo_sha256'],
+            'root_schedule_sha256': payload['demo']['root_schedule_sha256'],
+            'branch_masks_sha256': payload['demo']['branch_masks_sha256']})
+    elif method == 'active_full':
+        raise ValueError('Active Full requires a frozen demo manifest')
     execution = payload.get('execution_profile_id', 'perturn-legacy-v1')
     writer = payload.get('writer_profile_id', 'sync-v1')
     if execution not in ('perturn-legacy-v1', 'perturn-active-v1') or writer not in ('sync-v1', 'bounded-v1'):
@@ -40,7 +50,7 @@ def compose_config(payload):
     config.trainer.resume_mode = 'auto'
     config.trainer.experiment_name = payload['run_id']
     config.trainer.default_local_dir = str(Path(payload['run_dir']) / 'checkpoints')
-    config.ray_init.num_cpus = int(os.environ.get('SLURM_CPUS_PER_TASK', '32'))
+    config.ray_init.num_cpus = 32 if payload.get('demo') else int(os.environ.get('SLURM_CPUS_PER_TASK', '32'))
     if payload['simulator_python']:
         config.env.alfworld.worker_python = payload['simulator_python']
     if payload['benchmark'] == 'webshop':
@@ -54,7 +64,7 @@ def compose_config(payload):
             'analysis/beacon-omr/manifests' / (payload['benchmark'] + '.json')))})
     config.omr.tracking = {'resume': 'never', 'mode': 'online',
                            'logdir': str(Path(payload['attempt_dir']) / 'swanlab')}
-    if payload['benchmark'] == 'scienceworld':
+    if payload['benchmark'] == 'scienceworld' or payload.get('demo'):
         config.omr.tracking.update(step_mode='policy_update', initial_policy_update=0)
     for key in ('parent_failed_run', 'parent_attempt'):
         if key in payload:

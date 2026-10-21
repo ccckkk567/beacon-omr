@@ -41,11 +41,14 @@ def reused_runtime(root, name, base):
 
 
 def main():
+    allocation_started = time.time()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', required=True)
     parser.add_argument('--prepared-report', required=True)
     parser.add_argument('--benchmark', choices=['alfworld', 'webshop', 'scienceworld'], required=True)
-    parser.add_argument('--method', choices=['baseline', 'full'], required=True)
+    parser.add_argument('--method', choices=['baseline', 'full', 'active_full'], required=True)
+    parser.add_argument('--demo10', action='store_true')
+    parser.add_argument('--demo-resume', action='store_true')
     parser.add_argument('--run-tag', default='')
     parser.add_argument('--migration-request')
     args = parser.parse_args()
@@ -53,7 +56,15 @@ def main():
         parser.error('Training must run inside an allocated two-GPU Slurm job')
     import fcntl
     root = Path(args.root).absolute()
-    run_dir = formal_run_dir(root, args.benchmark, args.method, args.run_tag)
+    if args.demo10:
+        from experiments.omr.demo_runtime import run_id as demo_run_id
+        run_dir = root / 'analysis/beacon-omr' / demo_run_id(args.benchmark, args.method)
+        if args.migration_request or args.run_tag:
+            raise ValueError('Demo10 does not migrate any legacy run')
+    else:
+        if args.demo_resume:
+            raise ValueError('Demo resume requires Demo10')
+        run_dir = formal_run_dir(root, args.benchmark, args.method, args.run_tag)
     run_id = run_dir.name
     run_dir.mkdir(parents=True, exist_ok=True)
     # A duplicate submission must never write the same logical run concurrently.
@@ -64,6 +75,17 @@ def main():
         if previous['status'] != 'prepared_and_tested' or previous['source_commit'] != site['source_commit']:
             raise ValueError('Expected the accepted preparation report and its matching asset binding')
         commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip()
+        if args.demo10:
+            from experiments.omr.demo_runtime import binding, verify_integration
+            integration = verify_integration(root, commit)
+            if site['model'] != integration['model']:
+                raise ValueError('Accepted base model differs from frozen integration')
+            demo = binding(root, args.benchmark, commit)
+            if args.demo_resume:
+                from experiments.omr.latest_checkpoint import LatestCheckpoint
+                LatestCheckpoint(run_dir / 'checkpoints', run_id).latest()
+            elif (run_dir / 'progress.json').exists() or (run_dir / 'checkpoints').exists():
+                raise ValueError('Fresh Demo10 cannot adopt existing training/checkpoint state')
         migration = None
         if args.migration_request:
             if args.benchmark != 'webshop':
@@ -89,6 +111,8 @@ def main():
             payload.update(run_tag=args.run_tag,
                 manifest_path=str(formal_manifest_path(root, args.benchmark, args.run_tag)))
         payload.update(profiles)
+        if args.demo10:
+            payload.update(demo=demo, manifest_path=str(Path(demo['directory']) / 'demo_manifest.json'))
         if migration:
             payload.update(input_profile_id=migration['input_profile_id'],
                            migration_request=str(Path(args.migration_request).absolute()))
@@ -115,7 +139,7 @@ def main():
             env['JAVA_HOME'] = str(Path(java).resolve().parent.parent)
         print(f'TRAIN {args.benchmark} {args.method}: 150 updates, B16 x G8, 2 H200', flush=True)
         print(f'PROGRESS {run_dir / "progress.json"}', flush=True)
-        started = time.time()
+        started = allocation_started
         atomic_json(attempt / 'allocation.json', {'started_at': started, 'allocated_gpus': 2,
             'slurm_job_id': job, 'source_commit': commit})
         result = subprocess.run([str(runtime / 'bin/python'), '-I', '-B', '-m',

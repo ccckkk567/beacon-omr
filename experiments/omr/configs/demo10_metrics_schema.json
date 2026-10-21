@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "profile": "demo10-active-reuse-v1",
+  "axis": "SwanLab SDK step = completed policy update, including resumed update",
+  "primary": "eval/val/root_success_rate",
+  "mapping": {
+    "fixed_budget": "demo/planned_root_groups, demo/planned_archive_groups",
+    "actual_budget": "demo/actual_root_groups, demo/actual_archive_groups, demo/actual_restart_fraction",
+    "opportunities": "demo/eligible_archive_tasks, demo/archive_request_groups, demo/empty_fallback_groups",
+    "restore": "demo/restore_failed_groups, demo/restore_success_rate",
+    "task_distribution": "demo/distinct_archive_tasks, demo/repeated_archive_task_groups, demo/{root,restart}_family_share/*",
+    "archive": "archive/entries, archive/admitted, archive/candidates_observed, archive/tried_at_least_{1,2,3}, archive/censored_untried, archive/child_states_reused",
+    "first_use": "first_trial/wait_updates/{p50,p95,max}; *-first-trial-cohorts.jsonl.gz",
+    "signals": "signal/{root,restart}/event_rate/*, signal/{root,restart}/beacon_progress_rate, signal/{root,restart}/joint_adv_nonzero_rate",
+    "cost": "cost/cumulative_*, perf/*, cost/recorded_allocated_gpu_hours, cost/allocations_requiring_slurm_accounting",
+    "selection_probabilities": "*-active-plan.jsonl.gz: branch_slot_fraction, branch_assignment_probability, task_conditional_probability, conditional_task_set, cycle, cycle_position, inner_start",
+    "actual_starts": "*-starts.jsonl.gz: requested checkpoint/task, actual_checkpoint_id, fallback_reason, worker_receipts",
+    "optimizer": "optimization/update-*.jsonl.gz: origin_step_id, task_id, uid, traj_uid, advantages, segment_advantages, response tokens",
+    "evaluation": "evaluation/{validation,test}-u*.jsonl.gz; root-only original parent splits; final test mean over seeds0,1,2",
+    "versions": "integration_manifest.json, FROZEN.json, launch.json, resolved-config.json"
+  },
+  "missing_values": {
+    "restore_success_rate": "Omitted when archive_request_groups is zero",
+    "first_use_wait": "Only served entries; never substitute zero for censored entries",
+    "gpu_hours": "Recorded allocations include failed attempts; killed attempts lacking final allocation receipt require Slurm accounting and are explicitly counted as incomplete"
+  },
+  "not_claimed": "Native GPU acceptance, remote SwanLab readback and actual first8:8 evidence require returned HPC results"
+}

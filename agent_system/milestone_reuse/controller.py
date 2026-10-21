@@ -26,12 +26,12 @@ class ReuseController:
         self.pending, self.outcomes, self.plans = [], [], {}
         self.sampler.freeze(self.archive, self.statistics, policy_version)
 
-    def plan(self, task, group_id):
+    def plan(self, task, group_id, force=None):
         if not self._open or group_id in self.plans:
             raise ValueError("Invalid or duplicate group assignment")
         if task.split != "train":
             raise ValueError("Evaluation uses an independent root-only planner")
-        plan = self.sampler.choose(task, group_id, self.enabled)
+        plan = self.sampler.choose(task, group_id, self.enabled, force=force)
         self.plans[group_id] = plan
         return plan
 

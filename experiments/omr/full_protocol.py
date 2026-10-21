@@ -1,7 +1,7 @@
 """Online milestone reuse inside the native BEACON collector/update lifecycle."""
 from collections import Counter
 from copy import copy, deepcopy
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 import time
 
@@ -46,6 +46,15 @@ class FullCollectorObserver(RootCollectorObserver):
         self.latest_payload_refs = set()
         self.candidate_buffer = CandidateBuffer(c.archive.get('candidate_buffer_per_task', 16),
                                                seed=config.env.seed + 17019)
+        self.active_planner = None
+        if c.get('demo'):
+            if c.get('root_groups', 8) != 8 or c.get('archive_groups', 8) != 8:
+                raise ValueError('This frozen active profile requires exactly eight root/eight archive groups')
+            from .demo_manifest import verify
+            from .active_task_planner import ActiveTaskPlanner
+            _, _, masks, frozen = verify(c.demo.directory)
+            self.active_planner = ActiveTaskPlanner(manifest['splits']['train'], masks,
+                                                    frozen['root_schedule_sha256'])
 
     def task_spec(self, task):
         return TaskSpec(self.benchmark, 'train', str(task.get('family')), task['id'],
@@ -53,15 +62,39 @@ class FullCollectorObserver(RootCollectorObserver):
                          'root_seed': task['root_seed']})
 
     def plan(self, tasks, **kwargs):
+        if self.active_planner is not None:
+            if kwargs['split'] != 'train' or len(tasks) != 128 or self.config.env.rollout.n != 8:
+                raise ValueError('Active reuse requires sixteen training groups of eight')
+            from .task_manifest import seed_for
+            self.controller.begin(kwargs['update'])
+            for entry in self.controller.sampler.entries.values():
+                native = self.active_planner.tasks.get(entry.task.instance_id)
+                if native is None or entry.task != self.task_spec(dict(native, root_seed=seed_for('root', native['id']))):
+                    raise ValueError('Archive task binding escaped the frozen demo manifest')
+            self.active_rows = self.active_planner.plan(tasks[::8], self.controller.sampler.entries, kwargs['update'])
+            tasks = [r['task'] for r in self.active_rows for _ in range(8)]
         super().plan(tasks, **kwargs)
         if self.split != 'train':
             raise ValueError('Full OMR is prohibited in evaluation')
         self.manager.envs._omr_full_collection = True
-        self.controller.begin(self.update)
+        if self.active_planner is None:
+            self.controller.begin(self.update)
         self.plans = []
         self.specs = [self.task_spec(task) for task in self.tasks]
         for slot in range(0, len(tasks), self.group_n):
-            self.plans.append(self.controller.plan(self.specs[slot], f'{self.collection_id}:g{slot // self.group_n}'))
+            group = slot // self.group_n
+            force = None if self.active_planner is None else (
+                'restart' if self.active_rows[group]['actual_request_branch'] == 'archive' else 'root')
+            self.plans.append(self.controller.plan(self.specs[slot], f'{self.collection_id}:g{group}', force=force))
+            if self.active_planner is not None and force == 'root':
+                reason = 'empty_archive' if self.active_rows[group]['empty_fallback'] else 'fixed_root_slot'
+                self.plans[-1] = replace(self.plans[-1], fallback_reason=reason)
+                self.controller.plans[self.plans[-1].group_id] = self.plans[-1]
+        if self.active_planner is not None:
+            dump_records(self.directory / (self.collection_id + '-active-plan.jsonl.gz'),
+                         [dict(row, inner_start=asdict(plan),
+                               p_task_and_start=row['task_conditional_probability'] * plan.p_state_restart_marginal
+                               if plan.checkpoint_id else 1.) for row, plan in zip(self.active_rows, self.plans)])
         self.actual_ids = [plan.checkpoint_id for plan in self.plans for _ in range(self.group_n)]
         self.candidates, self.pending_counts = [], Counter()
         self.padding_slots = set()
@@ -267,6 +300,13 @@ class FullCollectorObserver(RootCollectorObserver):
         return result
 
     def commit(self, update):
+        if self.active_planner is not None:
+            for task in self.tasks:
+                if task['id'] not in self.active_planner.tasks:
+                    raise ValueError('Cannot commit non-demo training evidence')
+            for entry in self.pending_entries.values():
+                if entry.task.instance_id not in self.active_planner.tasks:
+                    raise ValueError('Cannot admit non-demo archive entries')
         for candidate in self.candidate_buffer.selected():
             self.controller.capture(self.pending_entries[candidate['checkpoint_id']])
         transaction = self.controller.commit(update)
@@ -312,6 +352,31 @@ class FullCollectorObserver(RootCollectorObserver):
                 'sampler/discovery_rate': sum(transaction['discovery'].values()) / max(1, len(transaction['discovery']))}
         import numpy as np
         history = list(self.controller.archive.entries.values()) + list(self.controller.archive.retired.values())
+        if self.active_planner is not None:
+            from .active_task_planner import metrics as active_metrics
+            metrics.update(active_metrics(self.active_rows, self.actual_ids[::self.group_n]))
+            metrics.update({'archive/tried_at_least_' + str(n): sum(e.total_selected_groups >= n for e in history)
+                            for n in (1, 2, 3)})
+            metrics['archive/censored_untried'] = sum(e.untried for e in history)
+            metrics['archive/child_states_reused'] = sum(e.parent_checkpoint_id is not None and not e.untried for e in history)
+            metrics['archive/children_admitted'] = sum(e.parent_checkpoint_id is not None for e in history)
+            metrics['demo/distinct_root_tasks'] = len({t['id'] for t, k in zip(self.tasks[::self.group_n], self.actual_ids[::self.group_n]) if k is None})
+            pending_ages = [update-e.created_update for e in entries if e.untried]
+            if pending_ages:
+                metrics['archive/untried_age_max'] = max(pending_ages)
+                metrics['archive/untried_age_mean'] = sum(pending_ages)/len(pending_ages)
+            for mode in ('root', 'restart'):
+                traces = [trace for trace, key in zip(self.traces, self.actual_ids)
+                          if (key is not None) == (mode == 'restart')]
+                for event in sorted({event for trace in traces for event in trace.outcomes()}):
+                    values = [trace.outcomes()[event] for trace in traces if trace.outcomes().get(event) is not None]
+                    if values:
+                        metrics[f'signal/{mode}/event_rate/{event}'] = sum(values) / len(values)
+            for mode in ('root', 'restart'):
+                families = Counter(str(task['family']) for task, key in zip(self.tasks[::self.group_n], self.actual_ids[::self.group_n])
+                                   if (key is not None) == (mode == 'restart'))
+                for family, count in families.items():
+                    metrics[f'demo/{mode}_family_share/{family}'] = count / sum(families.values())
         cohorts = []
         for cohort in sorted({e.created_update for e in history}):
             members = [e for e in history if e.created_update == cohort]
@@ -362,6 +427,7 @@ class FullCollectorObserver(RootCollectorObserver):
 
     def state_dict(self):
         return {'schema': 1, 'controller': self.controller.state_dict(),
+                **({'active_planner': self.active_planner.state_dict()} if self.active_planner is not None else {}),
                 **({'profiles': self.signal_profiles} if self.signal_profiles else {'thresholds': self.thresholds}),
                 'candidate_rng': self.candidate_buffer.rng_state(),
                 'payload_refs': sorted(self.store.dependency_closure(self.active_refs()))}
@@ -373,6 +439,10 @@ class FullCollectorObserver(RootCollectorObserver):
             raise ValueError('ScienceWorld checkpoint signal/statistics/novelty profiles differ; no implicit migration')
         self.store.dependency_closure(state['payload_refs'])
         self.controller = ReuseController.from_state_dict(state['controller'])
+        if self.active_planner is not None:
+            self.active_planner.load_state_dict(state['active_planner'])
+            if self.active_planner.cursor != self.controller.committed_update:
+                raise ValueError('Active planner and model cursor differ')
         self.thresholds = {} if self.signal_profiles else deepcopy(state['thresholds'])
         if self.signal_profiles:
             entries = list(self.controller.archive.entries.values()) + list(self.controller.archive.retired.values())

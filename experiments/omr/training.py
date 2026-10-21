@@ -51,6 +51,12 @@ class ProtocolTrainer(RayPPOTrainer):
                 manager.omr_tokenizer = self.tokenizer
         startup_stage('manifest.build_catalog')
         self.manifest = build_catalog(self.config.omr.benchmark, self.envs.envs, self.val_envs.envs)
+        demo = self.config.omr.get('demo')
+        if demo:
+            from .demo_manifest import verify
+            self.manifest, demo_schedule, _, frozen = verify(demo.directory, native_parent=self.manifest)
+            if frozen['demo_sha256'] != demo.demo_sha256 or frozen['source_commit'] != self.config.omr.source_commit:
+                raise ValueError('Demo source/content differs from the launch binding')
         path = Path(self.config.omr.manifest_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         import fcntl
@@ -67,7 +73,7 @@ class ProtocolTrainer(RayPPOTrainer):
             from .alfworld_acceptance import check_in_allocation
             startup_stage('alfworld.native_identity_acceptance')
             check_in_allocation(self.config, self.manifest['splits']['train'][0])
-        self.schedule = training_schedule(self.manifest, self.config.omr.benchmark)
+        self.schedule = demo_schedule if demo else training_schedule(self.manifest, self.config.omr.benchmark)
         self.signature = digest([self.config.omr.protocol_signature, self.manifest['sha256'], self.schedule])
         self.checkpoints = LatestCheckpoint(self.config.trainer.default_local_dir, self.config.omr.logical_run_id)
         self.train_observer = RootCollectorObserver(self.config, self.envs, self.manifest, self.attempt / 'rollouts')
@@ -118,6 +124,26 @@ class ProtocolTrainer(RayPPOTrainer):
                                 'abs_mean': float(values.abs().mean()) if values.numel() else 0.0,
                                 'nonzero_count': int(values.count_nonzero()), 'tokens': values.numel()}
             rows.append(row)
+        if self.config.omr.get('demo'):
+            allowed = {t['id'] for t in self.manifest['splits']['train']}
+            if any(row['task_id'] not in allowed for row in rows):
+                raise ValueError('Optimizer evidence contains a non-demo task')
+            if not self.config.omr.enabled:
+                metrics.update({'demo/planned_root_groups': 16, 'demo/planned_archive_groups': 0,
+                    'demo/actual_root_groups': 16, 'demo/actual_archive_groups': 0,
+                    'demo/archive_request_groups': 0, 'demo/actual_restart_fraction': 0})
+            gpu_hours = 0.
+            incomplete_attempts = 0
+            for file in self.run_dir.glob('attempts/*/allocation.json'):
+                allocation = json.loads(file.read_text())
+                if 'gpu_hours' in allocation:
+                    gpu_hours += allocation['gpu_hours']
+                elif file.parent == self.attempt:
+                    gpu_hours += max(0., time.time()-allocation['started_at']) * allocation['allocated_gpus'] / 3600
+                else:
+                    incomplete_attempts += 1
+            metrics['cost/recorded_allocated_gpu_hours'] = gpu_hours
+            metrics['cost/allocations_requiring_slurm_accounting'] = incomplete_attempts
         dump_records(self.attempt / 'optimization' / f'update-{self.global_steps:06d}.jsonl.gz', rows)
         steps = self.train_observer.steps
         self.cost['generated_action_steps'] += len(steps)
@@ -178,6 +204,10 @@ class ProtocolTrainer(RayPPOTrainer):
         return metrics
 
     def _evaluate_manifest(self, split, seeds):
+        from .evaluation_guard import isolated_evaluation
+        return isolated_evaluation(type(self)._evaluate_manifest_impl)(self, split, seeds)
+
+    def _evaluate_manifest_impl(self, split, seeds):
         self._protocol_phase('root_validation' if split == 'validation' else 'final_test')
         from verl.utils.dataset.rl_dataset import collate_fn
         rows = []
@@ -227,6 +257,10 @@ class ProtocolTrainer(RayPPOTrainer):
                  'attempt': str(self.attempt), 'generation_rng': 'request seeds derived from frozen task/update/slot/step'}
         if self.config.omr.get('input_profile_id'):
             state['input_profile_id'] = self.config.omr.input_profile_id
+        if self.config.omr.get('demo'):
+            from omegaconf import OmegaConf
+            state['demo_binding'] = OmegaConf.to_container(self.config.omr.demo, resolve=True)
+            state['task_planner_profile_id'] = self.config.omr.task_planner_profile_id
         observer = getattr(self, 'train_observer', None)
         if observer is not None and hasattr(observer, 'state_dict'):
             state['archive_enabled'] = True
@@ -273,6 +307,11 @@ class ProtocolTrainer(RayPPOTrainer):
         migration_request = self.config.omr.get('migration_request')
         directory, complete = (self.checkpoints.latest() if migration_request else self.checkpoints.recover())
         state = torch.load(directory / 'protocol.pt', map_location='cpu', weights_only=False)
+        if self.config.omr.get('demo'):
+            from omegaconf import OmegaConf
+            if (state.get('demo_binding') != OmegaConf.to_container(self.config.omr.demo, resolve=True)
+                    or state.get('task_planner_profile_id') != self.config.omr.task_planner_profile_id):
+                raise ValueError('Checkpoint demo/parent/bank/mask/planner binding differs')
         migration = None
         if state['signature'] != self.signature or state['task_cursor'] != complete['update']:
             if not migration_request:

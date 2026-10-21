@@ -1,5 +1,18 @@
 # BEACON online milestone reuse
 
+## Current scope: isolated Demo10 active reuse, 2026-10-21
+
+Implement the user's Demo10 plan in this independent worktree/branch. It
+supersedes older repair-only task scopes below. Protect ALL previous jobs,
+outputs, environments and frozen checkouts. No scancel/hold/update or legacy
+migration in this task. Six new conditions, three benchmarks x baseline and
+active_full, fresh locked base model, fixed parent-train10% subset, fixed8:8
+outer task planning, B16/G8,150updates. Separate named testqueue18h jobs,
+2H200/32CPU/256GiB; no arrays, smoke GPU jobs or automatic continuation.
+Prepare immutable parent-derived artifacts on CPU before six submissions;
+report actual remote results only after Tunnel output. See
+docs/omr/DEMO10_ACTIVE_REUSE_20261021.md for bindings and entrypoints.
+
 ## Latest user scope: ScienceWorld BEACON signals, 2026-10-21
 
 Implement the supplied milestone revision, then start BOTH ScienceWorld arms

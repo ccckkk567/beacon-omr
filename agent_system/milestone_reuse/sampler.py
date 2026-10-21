@@ -54,14 +54,18 @@ class RestartSampler:
                 coverage.update({key: value / len(buckets) for key, value in within.items()})
         return {"priority": priority, "stale": stale, "coverage": coverage}
 
-    def choose(self, task, group_id, enabled=True):
+    def choose(self, task, group_id, enabled=True, force=None):
+        if force not in (None, 'root', 'restart'):
+            raise ValueError('Unknown forced branch')
         p = self.parameters
-        alpha = p["alpha"] if enabled else 0.
+        alpha = (1. if force == 'restart' else 0. if force == 'root' else p["alpha"]) if enabled else 0.
         distributions = self.distributions(task) if alpha else {}
         if not distributions:
+            if force == 'restart':
+                raise ValueError('Forced restart requires a frozen eligible task')
             return GroupStartSpec(task, group_id, None, "root", 1., 1., 1., 0., 1.,
                                   fallback_reason="disabled" if not alpha else "empty_archive")
-        if self.rng.random() >= alpha:
+        if force is None and self.rng.random() >= alpha:
             return GroupStartSpec(task, group_id, None, "root", 1-alpha, 1., 1., 0., 1-alpha)
         channel_weights = {"priority": 1-p["rho"]-p["epsilon"], "stale": p["rho"], "coverage": p["epsilon"]}
         channel = self._draw(channel_weights)

@@ -1355,7 +1355,7 @@ class RayPPOTrainer:
 
                     # Commit resumable optimizer state before potentially long evaluation.
                     protocol = self.config.get('omr', {}).get('protocol', False)
-                    if protocol and (self.global_steps == 2 or is_last_step or
+                    if protocol and ((self.global_steps == 2 and not self.config.omr.get('demo')) or is_last_step or
                                      self.global_steps % self.config.trainer.save_freq == 0):
                         with _timer('save_checkpoint', timing_raw):
                             self._save_checkpoint()
