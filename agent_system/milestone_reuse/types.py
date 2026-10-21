@@ -51,6 +51,9 @@ class StateEntry:
     restore_cost_estimate: float = 0.0
     validity_status: str = "verified_candidate"
     provenance: dict = field(default_factory=dict)
+    signal_profile_id: str = 'native-progress-v1'
+    statistics_profile_id: str = 'legacy-events-v1'
+    novelty_profile_id: str = 'legacy-categories-v1'
 
     def __post_init__(self):
         self.event_ids = tuple(dict.fromkeys(self.event_ids))
@@ -63,6 +66,15 @@ class StateEntry:
             raise ValueError("State and actual input history references are required")
         if self.task.split != "train":
             raise ValueError("Evaluation/test states cannot enter the training archive")
+        from .scienceworld_profiles import SIGNAL_PROFILE, PROFILES, EVENT_IDS
+        if self.signal_profile_id == SIGNAL_PROFILE:
+            if (self.task.env != 'scienceworld' or self.event_ids != EVENT_IDS or self.completed_event_ids
+                    or any(getattr(self, key) != value for key, value in PROFILES.items())
+                    or self.detector_state.get('trial_scope') != 'after_start'
+                    or self.detector_state.get('profiles') != PROFILES
+                    or not self.coverage_key.startswith('sw_beacon_boundary_condition_v1:')
+                    or self.coverage_key != self.condition_signature):
+                raise ValueError('ScienceWorld future-trial labels cannot inherit prefix completion or legacy profiles')
 
     @property
     def untried(self):

@@ -54,6 +54,8 @@ def compose_config(payload):
             'analysis/beacon-omr/manifests' / (payload['benchmark'] + '.json')))})
     config.omr.tracking = {'resume': 'never', 'mode': 'online',
                            'logdir': str(Path(payload['attempt_dir']) / 'swanlab')}
+    if payload['benchmark'] == 'scienceworld':
+        config.omr.tracking.update(step_mode='policy_update', initial_policy_update=0)
     for key in ('parent_failed_run', 'parent_attempt'):
         if key in payload:
             config.omr[key] = payload[key]
@@ -78,6 +80,14 @@ def main():
     torch.manual_seed(0)
     config = compose_config(payload)
     atomic_json(Path(payload['attempt_dir']) / 'resolved-config.json', OmegaConf.to_container(config))
+    if payload['benchmark'] == 'scienceworld' and payload.get('method') == 'full':
+        from .scienceworld_signal_audit import audit_existing
+        try:
+            audit = audit_existing(payload['root'])
+        except (OSError, ValueError, KeyError) as error:
+            audit = dict(schema=1, migration_performed=False, counts_reused=False,
+                         gaps=['Historical read-only audit unavailable: ' + type(error).__name__])
+        atomic_json(Path(payload['attempt_dir']) / 'historical-beacon-signal-audit.json', audit)
     try:
         run_ppo(config)
     finally:
