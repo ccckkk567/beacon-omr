@@ -6,8 +6,12 @@ The user clarified that the BEACON milestone revision only changes Full OMR;
 continue the old baseline instead of repeating update0. Returned latest is30,
 COMPLETE sha26ee44cf840926069f4ca3f606ba233e6bbcb56f555830cfe8779af0fcb51a66;
 progress32 is an unsaved tail. Fresh baseline169823 and Full169824 are pending.
-Replace only verified pending169823 with one named testqueue/18h standalone
-baseline continuation. Keep Full169824 at frozen cee8723 from0. Preserve all
+Replace only verified pending169823 with one named h200p/72h standalone
+baseline continuation (latest user resource override). Keep training frozen at
+9f981018c338338c673b81e02de4a42f8ae58488 and use a newer controller only. If
+the previous continuation is already submitted and still pending, update that
+verified job's partition/time in place rather than submitting a duplicate.
+Keep Full169824 at frozen cee8723 from0. Preserve all
 old checkpoints/logs and original execution-profile receipts. The explicit
 baseline-only bridge must reproduce source ddae412's signature and compare the
 effective scientific config, manifest, task schedule, native engine/learner trees,

@@ -186,6 +186,8 @@ class SubmissionTests(unittest.TestCase):
         BaselineContinuationTests.setUp(self)
         self.calls, self.accepted, self.cancelled = [], [], False
         self.started, self.quota = False, False
+        self.resume_started = False
+        self.resume_partition, self.resume_time = 'h200p', '3-00:00:00'
         training = self.root / 'code/beacon-omr-runs' / ('train-' + bridge.FRESH_REV)
         path = self.root / 'analysis/beacon-omr/training-submissions' / bridge.FRESH_TAG / 'jobs.json'
         path.parent.mkdir(parents=True)
@@ -201,6 +203,18 @@ class SubmissionTests(unittest.TestCase):
             return '169824|omr-scienceworld-full|RUNNING\n169823|omr-scienceworld-baseline|' + (
                 'CANCELLED' if self.cancelled else 'RUNNING' if self.started else 'PENDING')
         if argv[0] == 'scontrol':
+            if argv[1] == 'update':
+                self.resume_partition, self.resume_time = 'h200p', '3-00:00:00'
+                return ''
+            if argv[-1] == '170000':
+                fields = dict(JobId='170000', JobName='omr-scienceworld-baseline-resume',
+                    JobState='RUNNING' if self.resume_started else 'PENDING',
+                    RunTime='00:01:00' if self.resume_started else '00:00:00',
+                    Account='prjsnnn0000269', WorkDir=str(self.root), UserId='linz3(173020)',
+                    Partition=self.resume_partition, TimeLimit=self.resume_time,
+                    Command=str(self.root / 'code/beacon-omr-runs' /
+                        ('train-' + bridge.FRESH_REV) / 'experiments/omr/train.sbatch'))
+                return ' '.join(f'{k}={v}' for k,v in fields.items())
             fields = dict(JobId='169823', JobName='omr-scienceworld-baseline', JobState='RUNNING' if self.started else 'PENDING',
                 RunTime='00:01:00' if self.started else '00:00:00', Account='prjsnnn0000269', WorkDir=str(self.root),
                 UserId='linz3(173020)', Command=str(self.root / 'code/beacon-omr-runs' /
@@ -225,7 +239,7 @@ class SubmissionTests(unittest.TestCase):
         self.run_submit(); self.run_submit()
         self.assertEqual(len(self.accepted), 1)
         argv = self.accepted[0]
-        for value in ('--partition=testqueue', '--time=18:00:00', '--gres=gpu:h200:2',
+        for value in ('--partition=h200p', '--time=3-00:00:00', '--gres=gpu:h200:2',
                       '--job-name=omr-scienceworld-baseline-resume', bridge.OLD_TAG):
             self.assertIn(value, argv)
         self.assertEqual([c for c in self.calls if c[0] == 'scancel'],
@@ -246,6 +260,48 @@ class SubmissionTests(unittest.TestCase):
         self.run_submit()
         self.assertEqual(len(self.accepted), 1)
         self.assertEqual(len([c for c in self.calls if c[0] == 'scancel']), 1)
+
+    def legacy_receipt(self, *, rejected=False):
+        ledger = self.root / 'analysis/beacon-omr/training-submissions' / submitter.TAG / 'jobs.json'
+        state = json.loads(ledger.read_text())
+        state['jobs']['baseline']['command'] = submitter.resume_command(
+            self.root, bridge.FRESH_REV, ledger.with_name('request.json'), legacy_resources=True)
+        if rejected:
+            state['jobs']['baseline'].update(status='rejected_quota')
+            state['jobs']['baseline'].pop('job_id', None)
+        atomic_json(ledger, state)
+        self.resume_partition, self.resume_time = 'testqueue', '18:00:00'
+        return ledger
+
+    def test_previous_pending_18h_job_is_updated_in_place_once(self):
+        self.run_submit()
+        ledger = self.legacy_receipt()
+        self.run_submit(); self.run_submit()
+        self.assertEqual(len(self.accepted), 1)
+        updates = [c for c in self.calls if c[:2] == ['scontrol', 'update']]
+        self.assertEqual(updates, [['scontrol', 'update', 'JobId=170000', 'Partition=h200p', 'TimeLimit=3-00:00:00']])
+        state = json.loads(ledger.read_text())
+        self.assertIn('--partition=testqueue', state['jobs']['baseline']['command'])
+        self.assertEqual(state['resource_updates'][0]['job_id'], '170000')
+
+    def test_previous_running_18h_job_is_preserved_without_new_submission(self):
+        self.run_submit(); self.legacy_receipt()
+        self.resume_started = True
+        with self.assertRaisesRegex(RuntimeError, 'started'):
+            self.run_submit()
+        self.assertEqual(len(self.accepted), 1)
+        self.assertFalse(any(c[:2] == ['scontrol', 'update'] for c in self.calls))
+
+    def test_previously_rejected_18h_command_can_adopt_72h_without_duplicate(self):
+        self.quota = True
+        with self.assertRaisesRegex(RuntimeError, 'quota rejected'):
+            self.run_submit()
+        ledger = self.legacy_receipt(rejected=True)
+        self.run_submit()
+        self.assertEqual(len(self.accepted), 1)
+        self.assertIn('--partition=h200p', self.accepted[0])
+        self.assertIn('--time=3-00:00:00', self.accepted[0])
+        self.assertEqual(len(json.loads(ledger.read_text())['rejected_submission_history']), 1)
 
 
 if __name__ == '__main__':

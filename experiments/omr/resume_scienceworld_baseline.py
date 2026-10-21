@@ -21,6 +21,59 @@ TAG = 'scienceworld-baseline-continue-20261021'
 TERMINAL = {'COMPLETED', 'CANCELLED', 'FAILED', 'TIMEOUT', 'NODE_FAIL', 'OUT_OF_MEMORY', 'PREEMPTED'}
 
 
+def resume_command(root, revision, request, *, legacy_resources=False):
+    training = root / 'code/beacon-omr-runs' / ('train-' + revision)
+    argv = formal_job_command(root, training, revision, 'scienceworld', 'baseline', OLD_TAG)
+    replacements = {'--job-name=': '--job-name=omr-scienceworld-baseline-resume',
+        '--output=': '--output=' + str(root / 'logs/beacon-omr/scienceworld-baseline-resume-%j.out')}
+    if not legacy_resources:
+        replacements.update({'--partition=': '--partition=h200p', '--time=': '--time=3-00:00:00'})
+    return [next((value for prefix, value in replacements.items() if a.startswith(prefix)), a)
+            for a in argv] + [str(request)]
+
+
+def adjust_existing(root, revision, state, ledger, request, invoke, user, *, apply):
+    """Keep an accepted job ID; change only a verified pending job's resources."""
+    row = state['jobs']['baseline']
+    job = row['job_id']
+    if (not re.fullmatch('[1-9][0-9]*', job) or row['command'] not in (
+            resume_command(root, revision, request),
+            resume_command(root, revision, request, legacy_resources=True))):
+        raise ValueError('Recorded baseline continuation command/identity differs')
+    def inspect():
+        raw = invoke(['scontrol', 'show', 'job', '-o', job])
+        fields = dict(re.findall(r'(?:^|\s)(\w+)=(.*?)(?=\s+\w+=|$)', raw))
+        expected = dict(JobId=job, JobName='omr-scienceworld-baseline-resume', Account='prjsnnn0000269',
+            WorkDir=str(root), Command=str(root / 'code/beacon-omr-runs' /
+                ('train-' + revision) / 'experiments/omr/train.sbatch'))
+        if (any(fields.get(k) != v for k, v in expected.items())
+                or not fields.get('UserId', '').startswith(user + '(') or fields.get('ArrayJobId')):
+            raise ValueError('Existing baseline continuation identity differs; preserve ' + job)
+        return fields
+    before = inspect()
+    if before.get('JobState') not in ('PENDING', 'RUNNING'):
+        raise RuntimeError('Existing baseline continuation is not pending/running; preserve ' + job)
+    if before.get('Partition') == 'h200p' and before.get('TimeLimit') == '3-00:00:00':
+        print('Existing baseline continuation: ' + job + ' (h200p;72h)')
+        return state
+    if (before.get('JobState') != 'PENDING' or before.get('RunTime') != '00:00:00'
+            or before.get('Partition') not in ('testqueue', 'h200p')
+            or before.get('TimeLimit') not in ('18:00:00', '3-00:00:00')):
+        raise RuntimeError('Existing baseline continuation has started or changed; preserve ' + job)
+    update = ['scontrol', 'update', 'JobId=' + job, 'Partition=h200p', 'TimeLimit=3-00:00:00']
+    if not apply:
+        return dict(existing_job=job, resource_update=update, protected_full='169824')
+    invoke(update)
+    after = inspect()
+    if after.get('Partition') != 'h200p' or after.get('TimeLimit') != '3-00:00:00':
+        raise RuntimeError('Resource update could not be verified; no duplicate submitted')
+    # Keep the immutable original sbatch command as the submission receipt.
+    state.setdefault('resource_updates', []).append(dict(job_id=job, before=before, after=after, command=update))
+    atomic_json(ledger, state)
+    print('Updated baseline continuation: ' + job + ' (h200p;72h; existing job ID retained)')
+    return state
+
+
 def fresh_identity(root, invoke, user, *, required=True):
     text = invoke(['squeue', '-h', '-r', '--states=all', '--user=' + user, '--format=%i|%j|%T'])
     rows = [tuple(p.strip() for p in line.split('|')) for line in text.splitlines() if line.strip()]
@@ -59,7 +112,7 @@ def idle_run(run):
         yield
 
 
-def submit(root, revision, *, apply=False, invoke=command, user=None):
+def submit(root, revision, *, controller_revision=None, apply=False, invoke=command, user=None):
     root, user = Path(root).absolute(), user or getpass.getuser()
     directory = root / 'analysis/beacon-omr/training-submissions' / TAG
     ledger = directory / 'jobs.json'
@@ -67,9 +120,11 @@ def submit(root, revision, *, apply=False, invoke=command, user=None):
     state = json.loads(ledger.read_text()) if ledger.is_file() else dict(binding=binding, jobs={})
     if state.get('binding') != binding or set(state['jobs']) - {'baseline'}:
         raise ValueError('Baseline continuation journal differs')
+    request = directory / 'request.json'
     if state['jobs'].get('baseline', {}).get('status') == 'submitted':
-        print('Existing baseline continuation: ' + state['jobs']['baseline']['job_id'])
-        return state
+        if apply:
+            clean_revision(REPO, controller_revision or revision)
+        return adjust_existing(root, revision, state, ledger, request, invoke, user, apply=apply)
     original_path = root / 'analysis/beacon-omr/training-submissions' / FRESH_TAG / 'jobs.json'
     original = json.loads(original_path.read_text())
     fresh_training = root / 'code/beacon-omr-runs' / ('train-' + FRESH_REV)
@@ -90,14 +145,16 @@ def submit(root, revision, *, apply=False, invoke=command, user=None):
     audit = checkpoint_metadata(root)
     identity = fresh_identity(root, invoke, user, required=not state.get('cancellation_requested'))
     training = root / 'code/beacon-omr-runs' / ('train-' + revision)
-    request = directory / 'request.json'
-    argv = formal_job_command(root, training, revision, 'scienceworld', 'baseline', OLD_TAG)
-    argv = ['--job-name=omr-scienceworld-baseline-resume' if a.startswith('--job-name=') else a for a in argv]
-    argv = ['--output=' + str(root / 'logs/beacon-omr/scienceworld-baseline-resume-%j.out')
-            if a.startswith('--output=') else a for a in argv] + [str(request)]
+    argv = resume_command(root, revision, request)
+    # A quota-rejected old command created no job, so it may adopt the new resources.
+    previous = state['jobs'].get('baseline')
+    if (previous and previous.get('status') == 'rejected_quota'
+            and previous.get('command') == resume_command(root, revision, request, legacy_resources=True)):
+        state.setdefault('rejected_submission_history', []).append(dict(previous))
+        state['jobs'].pop('baseline')
     if not apply:
         return dict(request=binding, checkpoint=audit, retire=identity, command=argv, protected_full='169824')
-    clean_revision(REPO, revision)
+    clean_revision(REPO, controller_revision or revision)
     clean_revision(root / 'code/beacon-omr-runs' / ('train-' + SOURCE), SOURCE)
     report = root / 'evidence/beacon-omr/webshop-prepare-165873/report.json'
     if not report.is_file() or not report.with_name('site.json').is_file():
@@ -119,7 +176,7 @@ def submit(root, revision, *, apply=False, invoke=command, user=None):
     # Release the writer lock before sbatch: a job can start immediately.
     # The training launcher acquires the same lock for its entire lifetime.
     job = submit_once(state, 'baseline', argv, ledger, invoke, id_field='job_id')
-    print(f'ScienceWorld baseline: {job} (resume from30; testqueue;18h; standalone; Full169824 preserved)')
+    print(f'ScienceWorld baseline: {job} (resume from30; h200p;72h; standalone; Full169824 preserved)')
     return state
 
 
@@ -127,20 +184,21 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', required=True)
     parser.add_argument('--revision', required=True)
+    parser.add_argument('--controller-revision')
     parser.add_argument('--apply', action='store_true')
     args = parser.parse_args()
-    if not re.fullmatch('[0-9a-f]{40}', args.revision):
+    if any(not re.fullmatch('[0-9a-f]{40}', value) for value in (args.revision, args.controller_revision or args.revision)):
         parser.error('Use a full frozen revision')
     root = Path(args.root).absolute()
     if not args.apply:
-        print(json.dumps(submit(root, args.revision), indent=2))
+        print(json.dumps(submit(root, args.revision, controller_revision=args.controller_revision), indent=2))
         return
     import fcntl
     directory = root / 'analysis/beacon-omr/training-submissions' / TAG
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / '.submit.lock').open('a+') as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        submit(root, args.revision, apply=True)
+        submit(root, args.revision, controller_revision=args.controller_revision, apply=True)
 
 
 if __name__ == '__main__':

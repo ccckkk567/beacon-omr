@@ -9,7 +9,7 @@ Returned old baseline latest is update30 (COMPLETE checksum
 is not a complete checkpoint. Only pending169823 may be withdrawn. Full169824
 continues from0 at frozen cee87234ea1ff3b52ad1c7740cb08354d2d2758e.
 
-resume_scienceworld_baseline.py queues one named testqueue/18h continuation
+resume_scienceworld_baseline.py queues one named h200p/72h continuation
 of omr-v2-scienceworld-baseline-s0-fullbatch-20261019. It retains the original
 execution-profile receipt and checkpoint until the native complete-generation
 writer commits a newer one. The baseline-only compatibility bridge checks exact
@@ -19,6 +19,15 @@ Git trees. Only disabled OMR profile IDs and runtime/monitoring fields differ;
 Full checkpoints or scientific changes are refused. Model, optimizer, dataloader
 and RNG restore through the production loaders. Update31 is the next optimizer
 update. A durable continuation origin supports later strict same-source resumes.
+
+The latest user resource override changes only the controller: training remains
+frozen at9f981018c338338c673b81e02de4a42f8ae58488 with2H200/32CPU/256GiB.
+If the previous18h continuation was already accepted and is still pending, the
+controller verifies its identity and changes Partition/TimeLimit in place,
+retaining the original job ID and submission receipt. It does not replace a
+running job or submit a duplicate. Full169824 remains untouched.
+The resource override passed10 focused continuation tests, including in-place
+pending-job adjustment, refusal to move a running18h job, and quota retries.
 
 Legacy SwanLab used log-sequence SDK steps; this continuation opens a linked
 segment to avoid mixing axes or overwriting unsaved updates31/32. The SDK axis
