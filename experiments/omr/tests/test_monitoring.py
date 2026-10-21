@@ -91,5 +91,35 @@ class MonitoringTests(unittest.TestCase):
         self.assertIsNone(resume_policy(None, 0, None)['id'])
         self.assertEqual(sanitized({'generated_tokens': 12})['generated_tokens'], 12)
 
+    def test_policy_update_axis_continues_for_same_or_new_run(self):
+        for previous_update, previous_id, offline in [(25, 'old', False), (27, 'old', False),
+                                                       (25, None, False), (25, 'old', True)]:
+            policy = resume_policy(25, previous_update, previous_id, offline=offline, allow_new_run=True)
+            with self.subTest(policy=policy), tempfile.TemporaryDirectory() as tmp:
+                sdk = FakeSDK()
+                options = dict(logdir=tmp, mode='online', resume=policy['resume'], id=policy['id'],
+                               step_mode='policy_update', initial_policy_update=25,
+                               initial_log_sequence=100 if policy['id'] else -1)
+                monitor = SwanLabMonitor('project', 'resumed', {}, options, sdk)
+                monitor.log({'validation': 1.}, 25)
+                monitor.log({'loss': .3}, 26)
+                self.assertEqual([step for _, step in sdk.run.logs], [25, 26])
+                self.assertEqual([data['axis/policy_update'] for data, _ in sdk.run.logs], [25, 26])
+                with self.assertRaises(ValueError):
+                    monitor.log({'loss': .1}, 1)
+                if previous_update == 25 and previous_id and not offline:
+                    self.assertEqual((sdk.kwargs['resume'], sdk.kwargs['id']), ('allow', 'old'))
+                else:
+                    self.assertEqual(sdk.kwargs['resume'], 'never')
+                    self.assertNotIn('id', sdk.kwargs)
+
+    def test_fresh_policy_axis_starts_at_zero_and_keeps_sequence_separate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sdk = FakeSDK()
+            monitor = SwanLabMonitor('p', 'new', {}, dict(logdir=tmp, step_mode='policy_update'), sdk)
+            monitor.log({'eval': 0.}, 0)
+            monitor.log({'loss': .2}, 1)
+            self.assertEqual([step for _, step in sdk.run.logs], [0, 1])
+
 
 if __name__ == '__main__': unittest.main()

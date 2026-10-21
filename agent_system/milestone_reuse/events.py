@@ -1,7 +1,8 @@
 """Archive evidence is separate from BEACON reward boundaries.
 
-ScienceWorld thresholds are native nonterminal scores actually seen in training.
-They become evaluable on the next update, without invented retrospective trials.
+The threshold-based ScienceWorld implementation is retained as a legacy reader
+and test reference. New ScienceWorld Full collection uses scienceworld_events
+and never registers dynamic score targets.
 """
 from copy import deepcopy
 from .types import content_id

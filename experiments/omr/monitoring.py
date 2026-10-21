@@ -30,15 +30,18 @@ def sanitized(value):
     return value
 
 
-def resume_policy(checkpoint_update, last_logged_update, previous_id, *, offline=False):
+def resume_policy(checkpoint_update, last_logged_update, previous_id, *, offline=False, allow_new_run=False):
     if checkpoint_update is None:
         return {"resume": "never", "id": None, "reason": "new_run"}
     if last_logged_update > checkpoint_update or offline:
         return {"resume": "never", "id": None, "reason": "rollback" if not offline else "offline_attempt",
                 "resume_parent_id": previous_id, "resume_from_update": checkpoint_update}
     if not previous_id:
+        if allow_new_run:
+            return {'resume': 'never', 'id': None, 'reason': 'missing_previous_run_id',
+                    'resume_from_update': checkpoint_update}
         raise ValueError("A normal monitoring resume requires its persisted run ID")
-    return {"resume": "must", "id": previous_id, "reason": "continuous"}
+    return {"resume": "allow" if allow_new_run else "must", "id": previous_id, "reason": "continuous"}
 
 
 class SwanLabMonitor:
@@ -53,8 +56,14 @@ class SwanLabMonitor:
         self.metrics_path = self.directory / 'omr-metrics.jsonl'
         self.closed = False
         self.sequence = options.pop('initial_log_sequence', -1)
+        self.step_mode = options.pop('step_mode', 'log_sequence')
+        self.initial_policy_update = options.pop('initial_policy_update', 0)
+        self.last_policy_update = None
+        if self.step_mode not in ('log_sequence', 'policy_update'):
+            raise ValueError('Unknown monitoring step axis')
         self.mode = options.pop('mode', os.environ.get('SWANLAB_MODE', 'online'))
         self.status = {"status": "initializing", "remote_readback_verified": False, "mode": self.mode}
+        self.status.update(step_mode=self.step_mode, initial_policy_update=self.initial_policy_update)
         atomic_json(self.status_path, self.status)
         parameters = inspect.signature(sdk.init).parameters
         name_key = 'name' if 'name' in parameters else 'experiment_name'
@@ -87,6 +96,11 @@ class SwanLabMonitor:
     def log(self, data, step):
         if self.closed:
             raise RuntimeError('Cannot log to a closed attempt')
+        if self.step_mode == 'policy_update':
+            if (not isinstance(step, numbers.Integral) or isinstance(step, bool)
+                    or step < self.initial_policy_update
+                    or (self.last_policy_update is not None and step < self.last_policy_update)):
+                raise ValueError('SwanLab policy step must continue from the restored update without reversal')
         self.sequence += 1
         record = {'sequence': self.sequence, 'policy_update': step, 'time': time.time(), 'metrics': sanitized(data)}
         # Fail loudly on lost local scientific evidence or non-serializable metrics.
@@ -94,7 +108,9 @@ class SwanLabMonitor:
             stream.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + '\n')
             stream.flush()
             os.fsync(stream.fileno())
-        self.run.log({**data, 'axis/policy_update': step}, step=self.sequence)
+        sdk_step = int(step) if self.step_mode == 'policy_update' else self.sequence
+        self.run.log({**data, 'axis/policy_update': step}, step=sdk_step)
+        self.last_policy_update = step
         self.status.update(last_log_sequence=self.sequence, last_logged_update=step)
         atomic_json(self.status_path, self.status)
 

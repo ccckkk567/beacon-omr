@@ -1,5 +1,26 @@
 # BEACON online milestone reuse
 
+## Latest user scope: ScienceWorld BEACON signals, 2026-10-21
+
+Implement the supplied milestone revision, then start BOTH ScienceWorld arms
+from update0 on testqueue (user wrote testsqueue), independent named18h jobs,
+2H200/32CPU/256GiB. No automatic resumes. Preserve old ScienceWorld checkpoints
+and records; the user's fresh-start instruction supersedes the plan's proposed
+migration. The returned scoped live squeue query is empty. New branch
+codex/scienceworld-beacon-milestones-20261021 starts at frozen ddae412 and does
+not incorporate later WebShop input/migration patches. Native subgoal_completed
+is the sole occurrence source. Use scienceworld-beacon-boundary-v1,
+beacon-progress-after-start-v1 and beacon-boundary-condition-v1 profiles. B/Goal
+are suffix questions; prefix occurrences remain diagnostic. D uses strict task,
+raw observation and sorted native-action condition keys against frozen seen.
+Keep BEACON wrappers/rewards/advantages, B16/G8/H30,150 updates and legacy/sync.
+SwanLab SDK step equals actual policy update for the new ScienceWorld runs.
+Future same-source resumes use allow/id when continuous; rollback/offline/missing
+ID opens a linked segment, still at the restored update. Runtime lineage writes
+must use scoped open_dict under OmegaConf struct mode. No rewriting old curves.
+New HPC submissions, historical raw-record audit and GPU/native/remote monitoring
+acceptance remain pending user Tunnel execution.
+
 Work only in this independent checkout. Preserve the upstream source identity
 `c88af45736b0a178106bc14ea89603ff02d8b222` and the Apache-2.0 notices.
 

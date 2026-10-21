@@ -15,3 +15,7 @@ actor_rollout_ref:
     invalid_action_penalty_coef: 0.1
   rollout:
     gpu_memory_utilization: 0.65
+omr:
+  signal_profile_id: scienceworld-beacon-boundary-v1
+  statistics_profile_id: beacon-progress-after-start-v1
+  novelty_profile_id: beacon-boundary-condition-v1

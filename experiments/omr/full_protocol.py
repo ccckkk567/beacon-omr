@@ -8,7 +8,9 @@ import time
 from agent_system.milestone_reuse.archive import Archive
 from agent_system.milestone_reuse.candidates import CandidateBuffer
 from agent_system.milestone_reuse.controller import ReuseController
-from agent_system.milestone_reuse.events import EventTrace, score_event
+from agent_system.milestone_reuse.events import EventTrace
+from agent_system.milestone_reuse.scienceworld_events import ScienceWorldBeaconTrace
+from agent_system.milestone_reuse.scienceworld_profiles import PROFILES, EVENT_IDS
 from agent_system.milestone_reuse.native_restart import render_starts, workers_of
 from agent_system.milestone_reuse.persistence import PayloadStore
 from agent_system.milestone_reuse.sampler import RestartSampler
@@ -22,6 +24,11 @@ class FullCollectorObserver(RootCollectorObserver):
     def __init__(self, config, manager, manifest, directory, tokenizer):
         super().__init__(config, manager, manifest, directory)
         c = config.omr
+        self.signal_profiles = None
+        if self.benchmark == 'scienceworld':
+            if any(c.get(key) != value for key, value in PROFILES.items()):
+                raise ValueError('ScienceWorld Full requires the explicit BEACON boundary profiles')
+            self.signal_profiles = dict(PROFILES)
         self.controller = ReuseController(
             Archive(c.archive.max_entries_total, c.archive.max_entries_per_task,
                     c.archive.max_entries_per_coverage_key, c.archive.max_untried_per_task),
@@ -54,7 +61,10 @@ class FullCollectorObserver(RootCollectorObserver):
         for slot in range(0, len(tasks), self.group_n):
             self.plans.append(self.controller.plan(self.specs[slot], f'{self.collection_id}:g{slot // self.group_n}'))
         self.actual_ids = [plan.checkpoint_id for plan in self.plans for _ in range(self.group_n)]
-        self.candidates, self.pending_counts, self.new_thresholds = [], Counter(), {}
+        self.candidates, self.pending_counts = [], Counter()
+        self.padding_slots = set()
+        if not self.signal_profiles:
+            self.new_thresholds = {}
         self.candidate_buffer.begin()
         self.pending_entries = {}
         self.restore_rows = []
@@ -116,10 +126,14 @@ class FullCollectorObserver(RootCollectorObserver):
         for i, task in enumerate(self.tasks):
             entry = self.controller.archive.entries.get(self.actual_ids[i])
             initial = entry.detector_state if entry else None
-            trace = EventTrace(self.benchmark, task, self.thresholds.get(task['id'], []), initial,
-                contexts[i].get('web_options_required', False),
-                float(infos[i].get('score', infos[i].get('task_score', 0.))),
-                self.config.algorithm.migpo.threshold)
+            if self.signal_profiles:
+                trace = ScienceWorldBeaconTrace(task, self.specs[i].key, initial,
+                    initial_condition=entry.condition_signature if entry else None)
+            else:
+                trace = EventTrace(self.benchmark, task, self.thresholds.get(task['id'], []), initial,
+                    contexts[i].get('web_options_required', False),
+                    float(infos[i].get('score', infos[i].get('task_score', 0.))),
+                    self.config.algorithm.migpo.threshold)
             self.traces.append(trace)
         self.start_infos = deepcopy(infos)
         self.add_timing('restore_wall_s', time.monotonic() - started_restore)
@@ -148,11 +162,19 @@ class FullCollectorObserver(RootCollectorObserver):
         captures = []
         workers = workers_of(self.manager)
         for slot, trace in enumerate(self.traces):
-            if not active[slot]:
+            if bool(batch.non_tensor_batch.get('is_padding_copy', [False] * len(self.traces))[slot]):
+                self.padding_slots.add(slot)
+            if (slot >= self.real_count or not active[slot]
+                    or slot in self.padding_slots):
                 continue
             info = infos[slot]
             category = trace.observe(info['executed_action'], next_observations['anchor'][slot], info, bool(dones[slot]))
-            self.new_thresholds.setdefault(self.tasks[slot]['id'], set()).update(trace.observed_scores)
+            if self.signal_profiles:
+                row = next(r for r in self.steps[before:] if r['slot'] == slot)
+                row.update(**trace.diagnostics(), beacon_boundary=info['subgoal_completed'],
+                           boundary_key=category, native_done=bool(dones[slot]))
+            else:
+                self.new_thresholds.setdefault(self.tasks[slot]['id'], set()).update(trace.observed_scores)
             if category is None or dones[slot]:
                 continue
             candidate = {'slot': slot, 'category': category, 'local_step': local_step,
@@ -169,6 +191,12 @@ class FullCollectorObserver(RootCollectorObserver):
                 'pre_text_obs': self.manager.pre_text_obs[slot], 'memory': deepcopy(self.manager.memory[slot]),
                 'rendered_observation': text, 'history_length': self.config.env.history_length}
             candidate['entry_fields'] = trace.candidate(category, next_observations['anchor'][slot], info)
+            if self.signal_profiles:
+                # NativeReplay.step already verified the exact task/receipt.
+                # Input validity precedes novelty; buffering/capacity does not.
+                trace.verified_boundary(category)
+                candidate.update(**self.signal_profiles, raw_flag=True, native_done=False,
+                                 boundary_key=category, native_receipt_verified=True)
             candidate.update(exact_key=content_id([task_key, category,
                 candidate['entry_fields']['condition_signature'], manager_state]),
                 restore_cost=len(manager_state['memory']))
@@ -197,7 +225,10 @@ class FullCollectorObserver(RootCollectorObserver):
                 restart_ancestry_depth=(parent.restart_ancestry_depth + 1 if parent else 0),
                 restore_cost_estimate=float(len(payload['trace'])),
                 root_initialization_receipt=deepcopy(self.start_infos[slot]),
-                provenance={'event_profile': 'native-progress-v1', 'source_commit': self.config.omr.source_commit},
+                provenance={'event_profile': (PROFILES['signal_profile_id'] if self.signal_profiles else 'native-progress-v1'),
+                            'source_commit': self.config.omr.source_commit,
+                            **({'native_flag': True, 'native_done': False, 'boundary_key': candidate['category']}
+                               if self.signal_profiles else {})},
                 **candidate.pop('entry_fields'))
             self.pending_entries[key] = entry
             candidate.update(checkpoint_id=key, payload_ref=ref)
@@ -209,12 +240,23 @@ class FullCollectorObserver(RootCollectorObserver):
         for slot, row in enumerate(self.summary):
             row.update(start_mode='restart' if self.actual_ids[slot] else 'root', start_id=self.actual_ids[slot])
             trace = self.traces[slot]
+            if self.signal_profiles:
+                row.update(**trace.diagnostics())
             self.controller.observe(RolloutOutcome(row['trajectory_id'], self.plans[slot // self.group_n].group_id,
                 self.specs[slot], self.actual_ids[slot], trace.outcomes(), frozenset(trace.categories),
-                policy_version=self.update))
+                is_padding_copy=slot in self.padding_slots, policy_version=self.update))
         dump_records(self.directory / (self.collection_id + '-outcomes.jsonl.gz'),
                      [dict(row, event_results=trace.outcomes(), discovered_categories=sorted(trace.categories))
                       for row, trace in zip(self.summary, self.traces)])
+        if self.signal_profiles:
+            dump_records(self.directory / (self.collection_id + '-beacon-occurrences.jsonl.gz'),
+                [dict(occurrence, **self.signal_profiles, slot=slot, task_key=self.specs[slot].key,
+                      trajectory_id=self.summary[slot]['trajectory_id'], actual_start_id=self.actual_ids[slot],
+                      collection_id=self.collection_id, policy_update=self.update,
+                      source_commit=self.config.omr.source_commit,
+                      requested_start_id=self.plans[slot // self.group_n].checkpoint_id,
+                      group_id=self.plans[slot // self.group_n].group_id)
+                 for slot, trace in enumerate(self.traces[:self.real_count]) for occurrence in trace.occurrences])
         return result
 
     def commit(self, update):
@@ -225,15 +267,12 @@ class FullCollectorObserver(RootCollectorObserver):
         for candidate in self.candidates:
             if candidate.get('checkpoint_id') in admissions:
                 candidate['admission'] = admissions[candidate['checkpoint_id']]
-        for task_id, values in self.new_thresholds.items():
+        for task_id, values in getattr(self, 'new_thresholds', {}).items():
             self.thresholds[task_id] = sorted(set(self.thresholds.get(task_id, [])) | values)
-        if self.benchmark == 'scienceworld':
-            for entry in self.controller.archive.entries.values():
-                entry.event_ids = tuple(score_event(value) for value in self.thresholds.get(entry.task.instance_id, [])
-                                        if value > entry.initial_score) + ('Goal',)
         dump_records(self.directory / (self.collection_id + '-candidates.jsonl.gz'), self.candidates)
         atomic_json(self.directory / (self.collection_id + '-commit.json'),
-                    dict(transaction, committed_update=update, thresholds=self.thresholds))
+                    dict(transaction, committed_update=update,
+                         **({'profiles': self.signal_profiles} if self.signal_profiles else {'thresholds': self.thresholds})))
         dump_records(self.directory / (self.collection_id + '-statistics.jsonl.gz'),
                      [{'entry': entry.to_dict(), 'view': self.controller.statistics.view(
                          key, entry.event_ids, update)} for key, entry in sorted(self.controller.archive.entries.items())])
@@ -289,6 +328,22 @@ class FullCollectorObserver(RootCollectorObserver):
                                 name + '/max': float(max(values))})
         for channel in ('priority', 'stale', 'coverage'):
             metrics['sampler/' + channel + '_groups'] = sum(p.channel == channel for p in self.plans)
+        if self.signal_profiles:
+            metrics.update({'milestone/beacon_flag_count': sum(r.get('beacon_boundary', False) for r in self.steps),
+                'milestone/omr_recognized_count': sum(len(t.occurrences) for t in self.traces[:self.real_count]),
+                'milestone/nonterminal_candidate_count': len(self.candidates),
+                'milestone/admitted_count': sum(a['admitted'] for a in transaction['admissions'])})
+            for mode in ('root', 'restart'):
+                rows = [r for r in self.summary if r['start_mode'] == mode and r['beacon_progress'] is not None]
+                if rows:
+                    prefix = 'signal/' + mode
+                    metrics.update({prefix + '/beacon_progress_rate': sum(r['beacon_progress'] for r in rows) / len(rows),
+                        prefix + '/beacon_progress_known_count': len(rows),
+                        prefix + '/beacon_progress_success_count': sum(r['beacon_progress'] for r in rows),
+                        prefix + '/new_beacon_milestone_count': sum(r['beacon_milestone_count'] for r in rows)})
+            reasons = Counter(c.get('rejection') or (c.get('admission') or {}).get('reason')
+                              for c in self.candidates if c.get('rejection') or not c.get('admission', {}).get('admitted', False))
+            metrics.update({'milestone/rejected_by_reason/' + str(reason): count for reason, count in reasons.items()})
         dump_records(self.directory / (self.collection_id + '-admissions-by-category.jsonl.gz'),
                      [{'task': entry.task.key, 'category': entry.coverage_key, **admissions[key]}
                       for key, entry in self.pending_entries.items() if key in admissions])
@@ -299,16 +354,26 @@ class FullCollectorObserver(RootCollectorObserver):
                 for ref in (entry.restore_payload_ref, entry.actual_history_ref)}
 
     def state_dict(self):
-        return {'schema': 1, 'controller': self.controller.state_dict(), 'thresholds': self.thresholds,
+        return {'schema': 1, 'controller': self.controller.state_dict(),
+                **({'profiles': self.signal_profiles} if self.signal_profiles else {'thresholds': self.thresholds}),
                 'candidate_rng': self.candidate_buffer.rng_state(),
                 'payload_refs': sorted(self.store.dependency_closure(self.active_refs()))}
 
     def load_state_dict(self, state):
         if state['schema'] != 1:
             raise ValueError('Unsupported Full OMR checkpoint schema')
+        if self.signal_profiles and state.get('profiles') != self.signal_profiles:
+            raise ValueError('ScienceWorld checkpoint signal/statistics/novelty profiles differ; no implicit migration')
         self.store.dependency_closure(state['payload_refs'])
         self.controller = ReuseController.from_state_dict(state['controller'])
-        self.thresholds = deepcopy(state['thresholds'])
+        self.thresholds = {} if self.signal_profiles else deepcopy(state['thresholds'])
+        if self.signal_profiles:
+            entries = list(self.controller.archive.entries.values()) + list(self.controller.archive.retired.values())
+            if (any(any(getattr(e, k) != v for k, v in PROFILES.items()) or e.event_ids != EVENT_IDS for e in entries)
+                    or any(set(events) - set(EVENT_IDS) for events in self.controller.statistics.events.values())
+                    or any(not category.startswith('sw_beacon_boundary_condition_v1:')
+                           for categories in self.controller.archive.seen_categories.values() for category in categories)):
+                raise ValueError('Legacy score/category evidence cannot enter the new ScienceWorld profile')
         if 'candidate_rng' in state:
             self.candidate_buffer.load_rng(state['candidate_rng'])
         if set(state['payload_refs']) != self.store.dependency_closure(self.active_refs()):

@@ -303,11 +303,19 @@ class ProtocolTrainer(RayPPOTrainer):
         if status_path.is_file():
             previous = json.loads(status_path.read_text())
         policy = resume_policy(self.global_steps, previous.get('last_logged_update', -1),
-                               previous.get('run_id'), offline=previous.get('mode') != 'online')
+                               previous.get('run_id'), offline=previous.get('mode') != 'online',
+                               allow_new_run=self.config.omr.tracking.get('step_mode') == 'policy_update')
         with open_dict(self.config.omr.tracking):
             self.config.omr.tracking.resume = policy['resume']
             self.config.omr.tracking.id = policy['id']
             self.config.omr.tracking.initial_log_sequence = previous.get('last_log_sequence', -1) if policy['id'] else -1
+            if self.config.omr.tracking.get('step_mode') == 'policy_update':
+                self.config.omr.tracking.initial_policy_update = self.global_steps
+        if self.config.omr.tracking.get('step_mode') == 'policy_update':
+            with open_dict(self.config.omr):
+                self.config.omr.resume_lineage = dict(parent_run_id=previous.get('run_id'),
+                    parent_attempt=state['attempt'], restored_update=self.global_steps,
+                    swanlab_resume=policy['resume'], step_axis='policy_update')
         atomic_json(self.attempt / 'resume-lineage.json', dict(policy, checkpoint=str(directory),
                     previous_attempt=state['attempt'], cost_watermark=self.cost))
 
