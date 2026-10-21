@@ -52,6 +52,10 @@ def compose_config(payload):
                            'logdir': str(Path(payload['attempt_dir']) / 'swanlab')}
     if payload['benchmark'] == 'scienceworld':
         config.omr.tracking.update(step_mode='policy_update', initial_policy_update=0)
+    if payload.get('scienceworld_baseline_resume_request'):
+        if (payload['benchmark'], method) != ('scienceworld', 'baseline'):
+            raise ValueError('Baseline continuation cannot migrate Full OMR')
+        config.omr.scienceworld_baseline_resume_request = payload['scienceworld_baseline_resume_request']
     for key in ('parent_failed_run', 'parent_attempt'):
         if key in payload:
             config.omr[key] = payload[key]

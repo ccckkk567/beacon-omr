@@ -1,5 +1,39 @@
 # ScienceWorld BEACON-aligned OMR, 2026-10-21
 
+## Baseline continuation correction
+
+After fresh submissions169823/169824 were accepted, the user clarified that the
+old baseline can be retained. This supersedes the BOTH-from0 choice below.
+Returned old baseline latest is update30 (COMPLETE checksum
+26ee44cf840926069f4ca3f606ba233e6bbcb56f555830cfe8779af0fcb51a66); progress32
+is not a complete checkpoint. Only pending169823 may be withdrawn. Full169824
+continues from0 at frozen cee87234ea1ff3b52ad1c7740cb08354d2d2758e.
+
+resume_scienceworld_baseline.py queues one named testqueue/18h continuation
+of omr-v2-scienceworld-baseline-s0-fullbatch-20261019. It retains the original
+execution-profile receipt and checkpoint until the native complete-generation
+writer commits a newer one. The baseline-only compatibility bridge checks exact
+source/checksum/update, reproduces ddae412's signature, compares effective configs
+(including materialized150-step schedulers), manifest, schedule and protected
+Git trees. Only disabled OMR profile IDs and runtime/monitoring fields differ;
+Full checkpoints or scientific changes are refused. Model, optimizer, dataloader
+and RNG restore through the production loaders. Update31 is the next optimizer
+update. A durable continuation origin supports later strict same-source resumes.
+
+Legacy SwanLab used log-sequence SDK steps; this continuation opens a linked
+segment to avoid mixing axes or overwriting unsaved updates31/32. The SDK axis
+starts at30, followed by31. Later continuous policy-update runs reuse their ID
+with resume=allow when safe. No automatic child or old checkpoint deletion is
+requested. The new baseline source differs from Full only in explicit resume
+and monitoring orchestration; protected baseline learning code is identical.
+
+The correction passed42 targeted CPU tests, including real old/new configuration
+composition, the production checkpoint loader/writer with model/optimizer/data
+fixtures, RNG and cursor restoration at30, subsequent same-source resume at35,
+OmegaConf struct mode, SwanLab axes, pending-only cancellation and quota retry.
+The Slurm script syntax check passed. Native GPU restoration and remote run
+readback await user Tunnel execution; these local fixtures are not GPU evidence.
+
 ## Source and decision
 
 The supplied milestone revision is implemented on an independent branch from

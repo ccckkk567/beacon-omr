@@ -228,6 +228,8 @@ class ProtocolTrainer(RayPPOTrainer):
         state['ledger_watermark'] = {str(path.relative_to(self.run_dir)): file_sha256(path)
                                     for path in sorted((self.run_dir / 'cost-ledger').glob('*/*.json'))}
         state['log_watermarks'] = log_state
+        if hasattr(self, 'baseline_continuation_origin'):
+            state['baseline_continuation_origin'] = self.baseline_continuation_origin
 
         def write(directory):
             self.actor_rollout_wg.save_checkpoint(str(directory / 'actor'), None,
@@ -258,11 +260,17 @@ class ProtocolTrainer(RayPPOTrainer):
     def _load_checkpoint(self):
         from omegaconf import open_dict
         from .monitoring import resume_policy
+        baseline_request = self.config.omr.get('scienceworld_baseline_resume_request')
         if not (self.checkpoints.root / 'latest.json').exists():
+            if baseline_request:
+                raise ValueError('Baseline continuation requires its checkpoint; refusing update zero')
             return
-        directory, complete = self.checkpoints.recover()
+        directory, complete = self.checkpoints.latest() if baseline_request else self.checkpoints.recover()
         state = torch.load(directory / 'protocol.pt', map_location='cpu', weights_only=False)
-        if state['signature'] != self.signature or state['task_cursor'] != complete['update']:
+        if baseline_request:
+            from .scienceworld_baseline_resume import authorize
+            authorize(self, state, complete, directory)
+        elif state['signature'] != self.signature or state['task_cursor'] != complete['update']:
             raise ValueError('Checkpoint protocol/manifest/task cursor mismatch')
         observer = getattr(self, 'train_observer', None)
         archive_enabled = observer is not None and hasattr(observer, 'load_state_dict')
@@ -305,6 +313,14 @@ class ProtocolTrainer(RayPPOTrainer):
         policy = resume_policy(self.global_steps, previous.get('last_logged_update', -1),
                                previous.get('run_id'), offline=previous.get('mode') != 'online',
                                allow_new_run=self.config.omr.tracking.get('step_mode') == 'policy_update')
+        if (self.config.omr.tracking.get('step_mode') == 'policy_update'
+                and previous.get('step_mode', 'log_sequence') != 'policy_update'):
+            # Old runs used SDK log sequence. Reusing that run at update30
+            # would mix axes or overwrite points, even without a rollback.
+            policy = dict(resume='never', id=None, reason='step_axis_changed',
+                          resume_parent_id=previous.get('run_id'), resume_from_update=self.global_steps,
+                          previous_step_mode=previous.get('step_mode', 'log_sequence'),
+                          previous_logged_update=previous.get('last_logged_update', -1))
         with open_dict(self.config.omr.tracking):
             self.config.omr.tracking.resume = policy['resume']
             self.config.omr.tracking.id = policy['id']

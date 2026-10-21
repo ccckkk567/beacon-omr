@@ -47,6 +47,7 @@ def main():
     parser.add_argument('--benchmark', choices=['alfworld', 'webshop', 'scienceworld'], required=True)
     parser.add_argument('--method', choices=['baseline', 'full'], required=True)
     parser.add_argument('--run-tag', default='')
+    parser.add_argument('--scienceworld-baseline-resume-request')
     args = parser.parse_args()
     if not os.environ.get('SLURM_JOB_ID'):
         parser.error('Training must run inside an allocated two-GPU Slurm job')
@@ -63,7 +64,16 @@ def main():
         if previous['status'] != 'prepared_and_tested' or previous['source_commit'] != site['source_commit']:
             raise ValueError('Expected the accepted preparation report and its matching asset binding')
         commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip()
-        profiles = resolve_profiles(run_dir, commit)
+        resume_request = args.scienceworld_baseline_resume_request
+        if resume_request:
+            from experiments.omr.scienceworld_baseline_resume import read_request, SOURCE, OLD_TAG
+            read_request(resume_request, root, commit)
+            if (args.benchmark, args.method, args.run_tag) != ('scienceworld', 'baseline', OLD_TAG):
+                raise ValueError('Continuation request is only for the original ScienceWorld baseline')
+            if not (run_dir / 'checkpoints/latest.json').is_file():
+                raise ValueError('Baseline continuation requires a complete checkpoint; refusing update zero')
+        # Preserve the original execution-profile receipt; it is historical evidence.
+        profiles = resolve_profiles(run_dir, SOURCE if resume_request else commit)
         job = os.environ['SLURM_JOB_ID'] + '-' + os.environ.get('SLURM_ARRAY_TASK_ID', 'single')
         attempt = run_dir / 'attempts' / job
         attempt.mkdir(parents=True, exist_ok=False)
@@ -82,6 +92,8 @@ def main():
             payload.update(run_tag=args.run_tag,
                 manifest_path=str(formal_manifest_path(root, args.benchmark, args.run_tag)))
         payload.update(profiles)
+        if resume_request:
+            payload['scienceworld_baseline_resume_request'] = str(Path(resume_request).absolute())
         atomic_json(attempt / 'launch.json', payload)
         atomic_json(run_dir / 'progress.json', {'status': 'starting', 'attempt': str(attempt),
             'source_commit': commit, 'checkpoint_pointer': str(run_dir / 'checkpoints/latest.json')})
