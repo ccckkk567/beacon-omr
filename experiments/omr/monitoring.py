@@ -37,7 +37,8 @@ def resume_policy(checkpoint_update, last_logged_update, previous_id, *, offline
         return {"resume": "never", "id": None, "reason": "rollback" if not offline else "offline_attempt",
                 "resume_parent_id": previous_id, "resume_from_update": checkpoint_update}
     if not previous_id:
-        raise ValueError("A normal monitoring resume requires its persisted run ID")
+        return {"resume": "never", "id": None, "reason": "missing_monitor_id",
+                "resume_parent_id": None, "resume_from_update": checkpoint_update}
     return {"resume": "must", "id": previous_id, "reason": "continuous"}
 
 
@@ -53,6 +54,7 @@ class SwanLabMonitor:
         self.metrics_path = self.directory / 'omr-metrics.jsonl'
         self.closed = False
         self.sequence = options.pop('initial_log_sequence', -1)
+        allow_fallback = options.pop('allow_new_run_fallback', False)
         self.mode = options.pop('mode', os.environ.get('SWANLAB_MODE', 'online'))
         self.status = {"status": "initializing", "remote_readback_verified": False, "mode": self.mode}
         atomic_json(self.status_path, self.status)
@@ -70,7 +72,18 @@ class SwanLabMonitor:
             raise ValueError('SwanLab resume=never must not receive an id')
         # The SDK reads SWANLAB_API_KEY from the process. Do not persist login or
         # overwrite the user's shared login state with swanlab.login().
-        self.run = sdk.init(**kwargs)
+        try:
+            self.run = sdk.init(**kwargs)
+        except Exception as error:
+            if not (allow_fallback and self.mode == 'online'
+                    and kwargs.get('resume') == 'must' and kwargs.get('id')):
+                raise
+            self.status.update(resume_parent_id=kwargs.pop('id'),
+                               resume_fallback_error_type=type(error).__name__)
+            atomic_json(self.status_path, self.status)
+            kwargs.update(resume='never', reinit=True)
+            self.sequence = -1
+            self.run = sdk.init(**kwargs)  # One explicit new-run attempt, never a retry loop.
         public = getattr(self.run, 'public', None)
         # In SwanLab 0.10.2, url is a property that raises ValueError offline.
         # getattr(..., None) still invokes that property. Do not touch either
@@ -87,7 +100,11 @@ class SwanLabMonitor:
     def log(self, data, step):
         if self.closed:
             raise RuntimeError('Cannot log to a closed attempt')
-        self.sequence += 1
+        if not isinstance(step, numbers.Integral) or isinstance(step, bool) or step < 0:
+            raise ValueError('Monitoring policy update must be a nonnegative integer')
+        # A new cloud run after restoring u30 must begin at u30/u31, not 0/1.
+        # Preserve a larger existing cloud sequence and distinct same-update logs.
+        self.sequence = max(self.sequence + 1, int(step))
         record = {'sequence': self.sequence, 'policy_update': step, 'time': time.time(), 'metrics': sanitized(data)}
         # Fail loudly on lost local scientific evidence or non-serializable metrics.
         with self.metrics_path.open('a', encoding='utf-8') as stream:

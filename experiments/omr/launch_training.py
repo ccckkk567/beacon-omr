@@ -63,7 +63,13 @@ def main():
         if previous['status'] != 'prepared_and_tested' or previous['source_commit'] != site['source_commit']:
             raise ValueError('Expected the accepted preparation report and its matching asset binding')
         commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip()
-        profiles = resolve_profiles(run_dir, commit)
+        monitoring_request = os.environ.get('OMR_MONITORING_RESUME_REQUEST')
+        if monitoring_request:
+            from .science_baseline_resume import validate_request
+            permit = validate_request(root, REPO, monitoring_request)
+            if args.benchmark != 'scienceworld' or args.method != 'baseline' or str(run_dir) != permit['run_dir']:
+                raise ValueError('Monitoring continuation is restricted to its original ScienceWorld baseline')
+        profiles = resolve_profiles(run_dir, permit['source'] if monitoring_request else commit)
         job = os.environ['SLURM_JOB_ID'] + '-' + os.environ.get('SLURM_ARRAY_TASK_ID', 'single')
         attempt = run_dir / 'attempts' / job
         attempt.mkdir(parents=True, exist_ok=False)
@@ -82,6 +88,8 @@ def main():
             payload.update(run_tag=args.run_tag,
                 manifest_path=str(formal_manifest_path(root, args.benchmark, args.run_tag)))
         payload.update(profiles)
+        if monitoring_request:
+            payload['monitoring_resume_request'] = monitoring_request
         atomic_json(attempt / 'launch.json', payload)
         atomic_json(run_dir / 'progress.json', {'status': 'starting', 'attempt': str(attempt),
             'source_commit': commit, 'checkpoint_pointer': str(run_dir / 'checkpoints/latest.json')})

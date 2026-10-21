@@ -91,5 +91,45 @@ class MonitoringTests(unittest.TestCase):
         self.assertIsNone(resume_policy(None, 0, None)['id'])
         self.assertEqual(sanitized({'generated_tokens': 12})['generated_tokens'], 12)
 
+    def test_new_run_after_restore_starts_at_actual_policy_update(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sdk = FakeSDK()
+            monitor = SwanLabMonitor('project', 'resumed', {}, {'logdir': tmp, 'resume': 'never'}, sdk)
+            monitor.log({'reward': 1}, 31)
+            monitor.log({'reward': 2}, 32)
+            self.assertEqual([step for _, step in sdk.run.logs], [31, 32])
+            self.assertEqual([data['axis/policy_update'] for data, _ in sdk.run.logs], [31, 32])
+            monitor.finish()
+
+    def test_explicit_init_fallback_keeps_parent_and_resumed_step(self):
+        class FallbackSDK(FakeSDK):
+            def __init__(self): self.calls = []
+            def init(self, **kwargs):
+                self.calls.append(dict(kwargs))
+                if len(self.calls) == 1:
+                    raise ValueError('fixture resume unavailable')
+                return super().init(**kwargs)
+        with tempfile.TemporaryDirectory() as tmp:
+            sdk = FallbackSDK()
+            monitor = SwanLabMonitor('project', 'resumed', {},
+                {'logdir': tmp, 'resume': 'must', 'id': 'old-run',
+                 'initial_log_sequence': 80, 'allow_new_run_fallback': True}, sdk)
+            monitor.log({'reward': 1}, 31)
+            self.assertEqual(len(sdk.calls), 2)
+            self.assertNotIn('id', sdk.calls[1])
+            self.assertEqual(sdk.calls[1]['resume'], 'never')
+            self.assertTrue(sdk.calls[1]['reinit'])
+            self.assertEqual(sdk.run.logs[0][1], 31)
+            self.assertEqual(monitor.status['resume_parent_id'], 'old-run')
+            monitor.finish()
+
+    def test_init_failure_without_opt_in_is_not_hidden(self):
+        class FailedSDK:
+            def init(self, **kwargs): raise RuntimeError('fixture failure')
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(RuntimeError, 'fixture failure'):
+                SwanLabMonitor('project', 'name', {},
+                    {'logdir': tmp, 'resume': 'must', 'id': 'old-run'}, FailedSDK())
+
 
 if __name__ == '__main__': unittest.main()
